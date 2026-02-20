@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "Ассистент группировки вопросов CleanerUI",
+  "description": "Ищет дубли в OpenEnds, массово группирует их и переносит данные проекта из Pyrus в CleanerUI.",
+  "version": "1.5.4",
+  "permissions": [
+    "storage"
+  ],
+  "action": {
+    "default_title": "Группировка OpenEnds"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://clr.env7.biz/lk*",
+        "http://clr.env7.biz/lk*",
+        "https://pyrus.com/t*",
+        "https://www.pyrus.com/t*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}
