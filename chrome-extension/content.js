@@ -264,7 +264,12 @@
         }
 
         let timer = null;
-        const observer = new MutationObserver(() => {
+        const observer = new MutationObserver((mutations) => {
+            const ourButton = document.getElementById(PYRUS_QUICK_FILL_BUTTON_ID);
+            const isOurChange = mutations.every((m) => ourButton && (ourButton === m.target || ourButton.contains(m.target)));
+            if (isOurChange) {
+                return;
+            }
             clearTimeout(timer);
             timer = setTimeout(() => {
                 timer = null;
@@ -307,8 +312,11 @@
         const insertionAnchor = referenceWrapper || anchorControl;
 
         const existingButton = document.getElementById(PYRUS_QUICK_FILL_BUTTON_ID);
-        if (existingButton && insertionAnchor.parentElement && existingButton.parentElement === insertionAnchor.parentElement) {
-            return true;
+        if (existingButton) {
+            const existingWrapper = existingButton.closest(`.${PYRUS_QUICK_FILL_WRAPPER_CLASS}`) || existingButton;
+            if (insertionAnchor.nextElementSibling === existingWrapper) {
+                return true;
+            }
         }
 
         removeInjectedPyrusQuickFillButtons();
@@ -360,33 +368,45 @@
         }
 
         button.id = PYRUS_QUICK_FILL_BUTTON_ID;
-        button.className = [referenceControl.className, PYRUS_QUICK_FILL_LINK_CLASS].filter(Boolean).join(" ");
+        button.className = PYRUS_QUICK_FILL_LINK_CLASS;
 
-        const referenceStyle = referenceControl.getAttribute("style");
-        if (referenceStyle) {
-            button.setAttribute("style", referenceStyle);
-        } else {
-            button.style.padding = "8px 14px";
-            button.style.border = "1px solid #ced4da";
-            button.style.borderRadius = "2px";
-            button.style.background = "#f8f9fa";
-            button.style.color = "#212529";
-            button.style.cursor = "pointer";
-        }
-
-        button.textContent = "В CleanerUI";
+        button.textContent = "Сетап Чистилки";
         button.title = "Скопировать данные проекта, открыть CleanerUI и заполнить форму";
 
-        button.style.marginTop = "0";
-        button.style.width = "auto";
-        button.style.minWidth = "0";
-        button.style.maxWidth = "none";
-        button.style.padding = "6px 10px";
-        if (!button.style.display) {
-            button.style.display = "inline-block";
-        }
+        const refStyles = referenceControl ? window.getComputedStyle(referenceControl) : null;
+        button.style.cssText = [
+            "display: inline-block",
+            `font-size: ${refStyles ? refStyles.fontSize : "14px"}`,
+            `font-family: ${refStyles ? refStyles.fontFamily : "inherit"}`,
+            `line-height: ${refStyles ? refStyles.lineHeight : "23px"}`,
+            `height: ${refStyles ? refStyles.height : "auto"}`,
+            `color: ${refStyles ? refStyles.color : "#212529"}`,
+            `border-width: ${refStyles ? refStyles.borderTopWidth : "1px"}`,
+            `border-style: ${refStyles ? refStyles.borderTopStyle : "solid"}`,
+            `border-color: ${refStyles ? refStyles.borderTopColor : "#d1d5db"}`,
+            `border-radius: ${refStyles ? refStyles.borderRadius : "2px"}`,
+            "background-color: transparent",
+            `padding: ${refStyles ? refStyles.padding : "2px 10px"}`,
+            "margin: 0",
+            "width: auto",
+            "min-width: 0",
+            "max-width: none",
+            "cursor: pointer",
+            "white-space: nowrap",
+            "text-decoration: none",
+            "box-sizing: border-box",
+            "transition: background-color 0.15s ease",
+        ].join("; ");
 
         button.addEventListener("click", handlePyrusQuickFillClick);
+
+        button.addEventListener("mouseenter", () => {
+            button.style.backgroundColor = "#f4f5f6";
+        });
+        button.addEventListener("mouseleave", () => {
+            button.style.backgroundColor = "transparent";
+        });
+
         return button;
     }
 
