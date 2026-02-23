@@ -84,6 +84,7 @@
         groups: [],
         processedKeys: new Set(),
         highlightedNodes: new Set(),
+        groupBlockIndexes: new Map(),
         panelVisible: false,
         selectorsVisible: false,
         bulkRunning: false,
@@ -1966,6 +1967,11 @@
 
     function rescan() {
         clearHighlights();
+        if (!state.groupBlockIndexes || !(state.groupBlockIndexes instanceof Map)) {
+            state.groupBlockIndexes = new Map();
+        } else {
+            state.groupBlockIndexes.clear();
+        }
         state.items = extractItems();
         state.groups = createGroups(state.items, state.mode, state.threshold).filter((group) => group.members.length >= state.settings.minGroupSize);
         state.groups.sort((a, b) => b.members.length - a.members.length);
@@ -2284,6 +2290,10 @@
             highlightButton.textContent = "Подсветить";
             highlightButton.addEventListener("click", () => highlightGroup(group));
 
+            const nextButton = document.createElement("button");
+            nextButton.textContent = "Далее";
+            nextButton.addEventListener("click", () => focusNextInGroup(group));
+
             const selectButton = document.createElement("button");
             selectButton.textContent = "Выбрать";
             selectButton.addEventListener("click", () => selectGroup(group, { markProcessed: true }));
@@ -2299,6 +2309,7 @@
             selectAndGroupButton.addEventListener("click", () => selectAndGroupGroup(group));
 
             actions.appendChild(highlightButton);
+            actions.appendChild(nextButton);
             actions.appendChild(selectButton);
             actions.appendChild(clearSelectButton);
             actions.appendChild(selectAndGroupButton);
@@ -2315,15 +2326,131 @@
         state.highlightedNodes.clear();
     }
 
-    function highlightGroup(group) {
+    function highlightGroup(group, options = {}) {
         clearHighlights();
+
         for (const item of group.members) {
             item.node.classList.add(HIGHLIGHT_CLASS);
             state.highlightedNodes.add(item.node);
         }
-        if (group.members[0]) {
-            group.members[0].node.scrollIntoView({ behavior: "smooth", block: "center" });
+
+        let scrollTarget = null;
+        let scrollBlock = "nearest";
+        let scrollBehavior = "smooth";
+        if (options.scrollToNode && options.scrollToNode.nodeName) {
+            scrollTarget = options.scrollToNode;
+            scrollBlock = "start";
+            scrollBehavior = options.scrollBehavior === "auto" ? "auto" : "smooth";
+        } else if (typeof options.focusIndex === "number") {
+            const focusIndex = clampInt(options.focusIndex, 0, group.members.length - 1, 0);
+            const member = group.members[focusIndex];
+            scrollTarget = member && member.node ? member.node : null;
         }
+        if (!scrollTarget && group.members[0]) {
+            scrollTarget = group.members[0].node;
+        }
+        if (scrollTarget) {
+            scrollTarget.scrollIntoView({ behavior: scrollBehavior, block: scrollBlock });
+        }
+    }
+
+    function focusNextInGroup(group) {
+        if (!group || !Array.isArray(group.members) || group.members.length === 0) {
+            return;
+        }
+
+        const blocks = getBlocksForGroup(group);
+        if (blocks.length === 0) {
+            return;
+        }
+
+        if (!state.groupBlockIndexes || !(state.groupBlockIndexes instanceof Map)) {
+            state.groupBlockIndexes = new Map();
+        }
+
+        let currentBlockIndex = state.groupBlockIndexes.has(group.key)
+            ? Number(state.groupBlockIndexes.get(group.key))
+            : NaN;
+
+        if (!Number.isFinite(currentBlockIndex) || currentBlockIndex < 0 || currentBlockIndex >= blocks.length) {
+            currentBlockIndex = getFirstVisibleBlockIndex(blocks);
+        }
+
+        const nextBlockIndex = (currentBlockIndex + 1) % blocks.length;
+        state.groupBlockIndexes.set(group.key, nextBlockIndex);
+
+        const targetBlock = blocks[nextBlockIndex];
+        const firstRowOfBlock = targetBlock && targetBlock[0] ? targetBlock[0] : null;
+        const isWrapToFirst = nextBlockIndex === 0;
+
+        if (firstRowOfBlock && firstRowOfBlock.node) {
+            highlightGroup(group, {
+                scrollToNode: firstRowOfBlock.node,
+                scrollBehavior: isWrapToFirst ? "auto" : "smooth"
+            });
+        } else {
+            highlightGroup(group);
+        }
+    }
+
+    function getBlocksForGroup(group) {
+        if (!group || !Array.isArray(group.members) || group.members.length === 0) {
+            return [];
+        }
+
+        const sorted = group.members.slice().sort((a, b) => Number(a.id) - Number(b.id));
+        const blocks = [];
+        let currentBlock = [];
+        let prevIndex = -2;
+
+        for (const item of sorted) {
+            const idx = Number(item.id);
+            if (Number.isNaN(idx)) {
+                continue;
+            }
+            if (idx !== prevIndex + 1 && currentBlock.length > 0) {
+                blocks.push(currentBlock);
+                currentBlock = [];
+            }
+            currentBlock.push(item);
+            prevIndex = idx;
+        }
+
+        if (currentBlock.length > 0) {
+            blocks.push(currentBlock);
+        }
+
+        return blocks;
+    }
+
+    function getFirstVisibleBlockIndex(blocks) {
+        const viewportTop = 0;
+        const viewportBottom = window.innerHeight || document.documentElement.clientHeight || 0;
+        if (!viewportBottom || blocks.length === 0) {
+            return 0;
+        }
+
+        for (let blockIndex = 0; blockIndex < blocks.length; blockIndex += 1) {
+            const block = blocks[blockIndex];
+            if (!Array.isArray(block)) {
+                continue;
+            }
+            for (const item of block) {
+                if (!item || !item.node || typeof item.node.getBoundingClientRect !== "function") {
+                    continue;
+                }
+                const rect = item.node.getBoundingClientRect();
+                if (!rect) {
+                    continue;
+                }
+                const isVisible = rect.bottom > viewportTop && rect.top < viewportBottom;
+                if (isVisible) {
+                    return blockIndex;
+                }
+            }
+        }
+
+        return 0;
     }
 
     function selectGroup(group, options = {}) {
