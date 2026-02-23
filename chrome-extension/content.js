@@ -2065,7 +2065,11 @@
         state.groups = createGroups(state.items, state.mode, state.threshold).filter((group) => group.members.length >= state.settings.minGroupSize);
         state.groups.sort((a, b) => b.members.length - a.members.length);
         renderStats();
-        renderGroups();
+        // Во время массовой группировки не перерисовываем список кластеров,
+        // чтобы он не "скакал" и показывал исходные кластеры.
+        if (!state.bulkRunning) {
+            renderGroups();
+        }
         updateBulkButtonState();
     }
 
@@ -2345,6 +2349,15 @@
     function renderStats() {
         const groupedRows = state.groups.reduce((sum, group) => sum + group.members.length, 0);
         const modeText = state.mode === "exact" ? "точный" : `похожий >= ${state.threshold.toFixed(2)}`;
+
+        // В массовом режиме показываем монотонную метрику — сколько кластеров уже обработано,
+        // чтобы счётчик не "скакал" из‑за пересчёта групп после каждой группировки.
+        if (state.bulkRunning) {
+            const processedClusters = state.bulkGroupsTotal;
+            state.statsNode.textContent = `Строк: ${state.items.length} | сгруппировано строк: ${groupedRows} | обработано кластеров: ${processedClusters} | режим: ${modeText}`;
+            return;
+        }
+
         state.statsNode.textContent = `Строк: ${state.items.length} | сгруппировано строк: ${groupedRows} в ${state.groups.length} кластерах | режим: ${modeText}`;
     }
 
@@ -2621,17 +2634,6 @@
         state.bulkRunning = true;
         updateBulkButtonState();
 
-        const currentPage = getCurrentGridPageNumber();
-        if (navigateGridToFirstPage(currentPage)) {
-            scheduleAfterPageChange(currentPage, () => {
-                state.processedKeys.clear();
-                saveStoredState();
-                rescan();
-                runBulkGroupingStep();
-            });
-            return;
-        }
-
         runBulkGroupingStep();
     }
 
@@ -2651,48 +2653,14 @@
 
         rescan();
 
-        const next = state.groups.find((group) => !state.processedKeys.has(group.key));
+        // В массовом режиме просто берём первый доступный кластер,
+        // пока их список не опустеет, не фильтруя по processedKeys.
+        const next = state.groups[0];
         if (!next) {
-            const currentPage = getCurrentGridPageNumber();
-            if (navigateGridToNextPage()) {
-                state.processedKeys.clear();
-                saveStoredState();
-                scheduleAfterPageChange(currentPage, () => {
-                    rescan();
-                    runBulkGroupingStep();
-                });
-                return;
-            }
-
-            if (state.bulkGroupsInPass > 0 && state.bulkPass < state.bulkMaxPasses) {
-                state.bulkPass += 1;
-                state.bulkGroupsInPass = 0;
-                state.processedKeys.clear();
-                saveStoredState();
-
-                if (navigateGridToFirstPage(currentPage)) {
-                    scheduleAfterPageChange(currentPage, () => {
-                        rescan();
-                        runBulkGroupingStep();
-                    });
-                    return;
-                }
-
-                state.bulkTimer = setTimeout(() => {
-                    state.bulkTimer = null;
-                    rescan();
-                    runBulkGroupingStep();
-                }, 250);
-                return;
-            }
-
+            // Все строки уже обработаны в одном проходе.
             const total = state.bulkGroupsTotal;
             stopBulkGrouping();
-            if (state.bulkPass >= state.bulkMaxPasses && state.bulkGroupsInPass > 0) {
-                alert(`Массовая группировка остановлена: достигнут лимит проходов (${state.bulkMaxPasses}). Обработано кластеров: ${total}.`);
-            } else {
-                alert(`Массовая группировка завершена. Обработано кластеров: ${total}.`);
-            }
+            alert(`Массовая группировка завершена. Обработано кластеров: ${total}.`);
             return;
         }
 
@@ -2720,15 +2688,6 @@
             rescan();
             runBulkGroupingStep();
         }, delay);
-    }
-
-    function getCurrentGridPageNumber() {
-        const selected = document.querySelector("#gridOpenEnds .k-pager-numbers .k-state-selected");
-        if (!selected) {
-            return null;
-        }
-        const value = Number.parseInt((selected.textContent || "").trim(), 10);
-        return Number.isFinite(value) ? value : null;
     }
 
     function getPagerRoot() {
@@ -2804,112 +2763,6 @@
         return { ensured: true, changed: true };
     }
 
-    function findPagerNavButton(kind) {
-        const pager = getPagerRoot();
-        if (!pager) {
-            return null;
-        }
-
-        const links = Array.from(pager.querySelectorAll("a.k-pager-nav"));
-        if (links.length === 0) {
-            return null;
-        }
-
-        const matchers = kind === "next"
-            ? ["следующ", "next"]
-            : ["перв", "first"];
-
-        for (const link of links) {
-            const title = (link.getAttribute("title") || "").toLowerCase();
-            if (matchers.some((item) => title.includes(item))) {
-                return link;
-            }
-        }
-
-        for (const link of links) {
-            if (kind === "next" && link.querySelector(".k-i-arrow-60-right, .k-i-arrow-right, .k-i-caret-alt-right, .k-i-seek-e")) {
-                return link;
-            }
-            if (kind === "first" && (link.classList.contains("k-pager-first") || link.querySelector(".k-i-arrow-end-left, .k-i-arrow-left, .k-i-caret-alt-left, .k-i-seek-w"))) {
-                return link;
-            }
-        }
-
-        return null;
-    }
-
-    function isPagerButtonDisabled(link) {
-        if (!link) {
-            return true;
-        }
-        if (link.classList.contains("k-state-disabled")) {
-            return true;
-        }
-        if ((link.getAttribute("aria-disabled") || "").toLowerCase() === "true") {
-            return true;
-        }
-        return false;
-    }
-
-    function navigateGridToNextPage() {
-        const next = findPagerNavButton("next");
-        if (!next || isPagerButtonDisabled(next)) {
-            return false;
-        }
-        next.click();
-        return true;
-    }
-
-    function navigateGridToFirstPage(currentPage) {
-        if (currentPage !== null && currentPage <= 1) {
-            return false;
-        }
-        const first = findPagerNavButton("first");
-        if (!first || isPagerButtonDisabled(first)) {
-            return false;
-        }
-        first.click();
-        return true;
-    }
-
-    function scheduleAfterPageChange(previousPage, callback) {
-        if (state.bulkTimer) {
-            clearTimeout(state.bulkTimer);
-            state.bulkTimer = null;
-        }
-
-        if (previousPage === null) {
-            state.bulkTimer = setTimeout(() => {
-                state.bulkTimer = null;
-                callback();
-            }, 1400);
-            return;
-        }
-
-        const timeoutMs = 15000;
-        const intervalMs = 160;
-        const startedAt = Date.now();
-
-        const tick = () => {
-            if (!state.bulkRunning) {
-                return;
-            }
-
-            const currentPage = getCurrentGridPageNumber();
-            const pageChanged = previousPage !== null && currentPage !== null && currentPage !== previousPage;
-            const timedOut = Date.now() - startedAt >= timeoutMs;
-
-            if (pageChanged || timedOut) {
-                callback();
-                return;
-            }
-
-            state.bulkTimer = setTimeout(tick, intervalMs);
-        };
-
-        state.bulkTimer = setTimeout(tick, intervalMs);
-    }
-
     function updateBulkButtonState() {
         if (!state.panel) {
             return;
@@ -2979,7 +2832,10 @@
         state.processedKeys.add(groupKey);
         saveStoredState();
         renderStats();
-        renderGroups();
+        // В массовом режиме не трогаем список, чтобы кластеры не исчезали.
+        if (!state.bulkRunning) {
+            renderGroups();
+        }
     }
 
     function activateSelectControl(control, fallbackNode) {
