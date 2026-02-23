@@ -308,8 +308,8 @@
             return false;
         }
 
-        const referenceWrapper = anchorControl.closest(".formFieldButtonWrapper");
-        const insertionAnchor = referenceWrapper || anchorControl;
+        const referenceNote = anchorControl.closest(".formFieldNote") || anchorControl.closest(".formFieldButtonWrapper");
+        const insertionAnchor = referenceNote || anchorControl;
 
         const existingButton = document.getElementById(PYRUS_QUICK_FILL_BUTTON_ID);
         if (existingButton) {
@@ -321,13 +321,14 @@
 
         removeInjectedPyrusQuickFillButtons();
 
-        const wrapper = createPyrusQuickFillWrapper(referenceWrapper);
+        const wrapper = createPyrusQuickFillWrapper(referenceNote);
         const button = buildPyrusQuickFillButton(anchorControl);
         if (!button) {
             return false;
         }
 
-        wrapper.appendChild(button);
+        const buttonContainer = wrapper.querySelector(".formFieldNoteControl") || wrapper;
+        buttonContainer.appendChild(button);
         insertionAnchor.insertAdjacentElement("afterend", wrapper);
 
         console.info("[QGA] Кнопка В CleanerUI: добавлена рядом с кнопкой Новый клиент");
@@ -356,88 +357,49 @@
             return null;
         }
 
-        const tag = (referenceControl.tagName || "").toLowerCase();
-        let button = null;
-
-        if (tag === "a") {
-            button = document.createElement("a");
-            button.href = "#";
-        } else {
-            button = document.createElement("button");
-            button.type = "button";
-        }
-
+        const button = document.createElement("a");
+        button.href = "#";
         button.id = PYRUS_QUICK_FILL_BUTTON_ID;
-        button.className = PYRUS_QUICK_FILL_LINK_CLASS;
-
-        button.textContent = "Сетап Чистилки";
+        button.className = `linkButton linkButton_theme_gray formFieldNoteButton ${PYRUS_QUICK_FILL_LINK_CLASS}`.trim();
         button.title = "Скопировать данные проекта, открыть CleanerUI и заполнить форму";
+        button.setAttribute("role", "button");
 
-        const refStyles = referenceControl ? window.getComputedStyle(referenceControl) : null;
-        button.style.cssText = [
-            "display: inline-block",
-            `font-size: ${refStyles ? refStyles.fontSize : "14px"}`,
-            `font-family: ${refStyles ? refStyles.fontFamily : "inherit"}`,
-            `line-height: ${refStyles ? refStyles.lineHeight : "23px"}`,
-            `height: ${refStyles ? refStyles.height : "auto"}`,
-            `color: ${refStyles ? refStyles.color : "#212529"}`,
-            `border-width: ${refStyles ? refStyles.borderTopWidth : "1px"}`,
-            `border-style: ${refStyles ? refStyles.borderTopStyle : "solid"}`,
-            `border-color: ${refStyles ? refStyles.borderTopColor : "#d1d5db"}`,
-            `border-radius: ${refStyles ? refStyles.borderRadius : "2px"}`,
-            "background-color: transparent",
-            `padding: ${refStyles ? refStyles.padding : "2px 10px"}`,
-            "margin: 0",
-            "width: auto",
-            "min-width: 0",
-            "max-width: none",
-            "cursor: pointer",
-            "white-space: nowrap",
-            "text-decoration: none",
-            "box-sizing: border-box",
-            "transition: background-color 0.15s ease",
-        ].join("; ");
+        const textSpan = document.createElement("span");
+        textSpan.className = "formFieldNoteButton_text";
+        textSpan.textContent = "Сетап Чистилки";
+        button.appendChild(textSpan);
 
         button.addEventListener("click", handlePyrusQuickFillClick);
-
-        button.addEventListener("mouseenter", () => {
-            button.style.backgroundColor = "#f4f5f6";
-        });
-        button.addEventListener("mouseleave", () => {
-            button.style.backgroundColor = "transparent";
-        });
 
         return button;
     }
 
-    function createPyrusQuickFillWrapper(referenceWrapper) {
-        let wrapper = null;
-
-        if (referenceWrapper) {
-            const tag = (referenceWrapper.tagName || "div").toLowerCase();
-            wrapper = document.createElement(tag);
-            wrapper.className = [referenceWrapper.className, PYRUS_QUICK_FILL_WRAPPER_CLASS].filter(Boolean).join(" ");
-
-            const style = referenceWrapper.getAttribute("style");
+    function createPyrusQuickFillWrapper(referenceNote) {
+        if (referenceNote && referenceNote.classList.contains("formFieldNote")) {
+            const outer = document.createElement("div");
+            outer.className = [referenceNote.className, PYRUS_QUICK_FILL_WRAPPER_CLASS].filter(Boolean).join(" ");
+            const style = referenceNote.getAttribute("style");
             if (style) {
-                wrapper.setAttribute("style", style);
+                outer.setAttribute("style", style);
             }
-            wrapper.style.width = "auto";
-            wrapper.style.minWidth = "0";
-            wrapper.style.maxWidth = "none";
-            wrapper.style.flex = "0 0 auto";
-            wrapper.style.marginInlineStart = "8px";
-            wrapper.style.display = "inline-block";
-            wrapper.style.verticalAlign = "top";
-        } else {
-            wrapper = document.createElement("div");
-            wrapper.className = PYRUS_QUICK_FILL_WRAPPER_CLASS;
-            wrapper.style.marginTop = "8px";
-            wrapper.style.marginInlineStart = "8px";
-            wrapper.style.display = "inline-block";
-            wrapper.style.verticalAlign = "top";
+            outer.style.flex = "0 0 auto";
+            outer.style.width = "fit-content";
+
+            const content = document.createElement("div");
+            content.className = "formFieldContent formFieldContent_small formFieldNote__content";
+
+            const control = document.createElement("div");
+            control.className = "formFieldNoteControl";
+
+            content.appendChild(control);
+            outer.appendChild(content);
+            return outer;
         }
 
+        const wrapper = document.createElement("div");
+        wrapper.className = PYRUS_QUICK_FILL_WRAPPER_CLASS;
+        wrapper.style.display = "inline-block";
+        wrapper.style.verticalAlign = "top";
         return wrapper;
     }
 
@@ -504,7 +466,7 @@
             event.stopPropagation();
         }
 
-        const button = event && event.currentTarget instanceof HTMLButtonElement
+        const button = event && event.currentTarget instanceof HTMLElement
             ? event.currentTarget
             : null;
 
@@ -514,7 +476,13 @@
 
         if (button) {
             button.dataset.qgaBusy = "1";
-            button.disabled = true;
+            if (button instanceof HTMLButtonElement) {
+                button.disabled = true;
+            } else {
+                button.setAttribute("aria-disabled", "true");
+                button.style.pointerEvents = "none";
+                button.style.opacity = "0.6";
+            }
         }
 
         try {
@@ -536,7 +504,13 @@
             }
         } finally {
             if (button) {
-                button.disabled = false;
+                if (button instanceof HTMLButtonElement) {
+                    button.disabled = false;
+                } else {
+                    button.removeAttribute("aria-disabled");
+                    button.style.pointerEvents = "";
+                    button.style.opacity = "";
+                }
                 delete button.dataset.qgaBusy;
             }
         }
@@ -1894,7 +1868,6 @@
                     </div>
                 </div>
                 <div class="qga-actions">
-                    <button id="qga-rescan">Пересканировать</button>
                     <button id="qga-group-all">Сгруппировать все</button>
                     <button id="qga-toggle-selectors">Показать селекторы</button>
                     <button id="qga-clear">Снять подсветку</button>
@@ -1986,7 +1959,6 @@
             }
         });
 
-        panel.querySelector("#qga-rescan").addEventListener("click", () => rescan());
         panel.querySelector("#qga-group-all").addEventListener("click", () => toggleGroupAll());
         panel.querySelector("#qga-toggle-selectors").addEventListener("click", () => toggleSelectorsVisibility());
         panel.querySelector("#qga-clear").addEventListener("click", () => clearHighlights());
