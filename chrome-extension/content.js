@@ -2482,40 +2482,46 @@
             sample.className = "qga-group-sample";
             sample.textContent = group.sample;
 
-            const actions = document.createElement("div");
-            actions.className = "qga-inline-actions";
-
-            const highlightButton = document.createElement("button");
-            highlightButton.textContent = "Подсветить";
-            highlightButton.addEventListener("click", () => highlightGroup(group));
-
-            const nextButton = document.createElement("button");
-            nextButton.textContent = "Далее";
-            nextButton.addEventListener("click", () => focusNextInGroup(group));
-
-            const selectButton = document.createElement("button");
-            selectButton.textContent = "Выбрать";
-            selectButton.addEventListener("click", () => selectGroup(group, { markProcessed: true }));
-
-            const clearSelectButton = document.createElement("button");
-            clearSelectButton.textContent = "Снять выбор";
-            clearSelectButton.addEventListener("click", () => {
-                clearCurrentSelections();
-            });
-
-            const selectAndGroupButton = document.createElement("button");
-            selectAndGroupButton.textContent = "Выбрать + Сгруппировать";
-            selectAndGroupButton.addEventListener("click", () => selectAndGroupGroup(group));
-
-            actions.appendChild(highlightButton);
-            actions.appendChild(nextButton);
-            actions.appendChild(selectButton);
-            actions.appendChild(clearSelectButton);
-            actions.appendChild(selectAndGroupButton);
-
             wrapper.appendChild(title);
             wrapper.appendChild(sample);
-            wrapper.appendChild(actions);
+
+            // Во время массовой группировки скрываем все кнопки в элементах списка,
+            // оставляя только номер кластера и текст примера.
+            if (!state.bulkRunning) {
+                const actions = document.createElement("div");
+                actions.className = "qga-inline-actions";
+
+                const highlightButton = document.createElement("button");
+                highlightButton.textContent = "Подсветить";
+                highlightButton.addEventListener("click", () => highlightGroup(group));
+
+                const nextButton = document.createElement("button");
+                nextButton.textContent = "Далее";
+                nextButton.addEventListener("click", () => focusNextInGroup(group));
+
+                const selectButton = document.createElement("button");
+                selectButton.textContent = "Выбрать";
+                selectButton.addEventListener("click", () => selectGroup(group, { markProcessed: true }));
+
+                const clearSelectButton = document.createElement("button");
+                clearSelectButton.textContent = "Снять выбор";
+                clearSelectButton.addEventListener("click", () => {
+                    clearCurrentSelections();
+                });
+
+                const selectAndGroupButton = document.createElement("button");
+                selectAndGroupButton.textContent = "Выбрать + Сгруппировать";
+                selectAndGroupButton.addEventListener("click", () => selectAndGroupGroup(group));
+
+                actions.appendChild(highlightButton);
+                actions.appendChild(nextButton);
+                actions.appendChild(selectButton);
+                actions.appendChild(clearSelectButton);
+                actions.appendChild(selectAndGroupButton);
+
+                wrapper.appendChild(actions);
+            }
+
             state.listNode.appendChild(wrapper);
         });
     }
@@ -2729,6 +2735,7 @@
         if (state.progressBarWrap) {
             state.progressBarWrap.classList.add("qga-progress-visible");
         }
+        renderGroups();
 
         runBulkGroupingStep();
     }
@@ -2743,6 +2750,7 @@
             state.bulkTimer = null;
         }
         updateBulkButtonState();
+        renderGroups();
     }
 
     function runBulkGroupingStep() {
