@@ -35,7 +35,8 @@
         maxItemsForSimilarMode: 1500,
         autoRescan: true,
         clearSelectionBeforeSelect: true,
-        postGroupRescanDelayMs: 1300
+        postGroupRescanDelayMs: 1300,
+        splitByVariableInBulk: false
     };
 
     const STOP_WORDS = new Set([
@@ -1864,6 +1865,15 @@
                         <input id="qga-threshold" type="number" min="0.5" max="1" step="0.01" />
                     </div>
                 </div>
+                <div class="qga-row">
+                    <div>
+                        <label>
+                            <input id="qga-split-by-variable" type="checkbox" />
+                            Разные переменные отдельно
+                        </label>
+                    </div>
+                    <div></div>
+                </div>
                 <div class="qga-actions">
                     <button id="qga-group-all">Сгруппировать все</button>
                     <button id="qga-toggle-selectors">Показать селекторы</button>
@@ -1927,10 +1937,14 @@
         const modeInput = panel.querySelector("#qga-mode");
         const thresholdInput = panel.querySelector("#qga-threshold");
         const delayInput = panel.querySelector("#qga-delay-ms");
+        const splitByVariableInput = panel.querySelector("#qga-split-by-variable");
 
         modeInput.value = state.mode;
         thresholdInput.value = state.threshold.toFixed(2);
         delayInput.value = String(state.settings.postGroupRescanDelayMs);
+        if (splitByVariableInput) {
+            splitByVariableInput.checked = Boolean(state.settings.splitByVariableInBulk);
+        }
 
         panel.querySelector("#qga-item-selector").value = state.settings.itemSelector;
         panel.querySelector("#qga-text-selector").value = state.settings.textSelector;
@@ -1955,6 +1969,14 @@
             }
         });
 
+        if (splitByVariableInput) {
+            splitByVariableInput.addEventListener("change", () => {
+                state.settings.splitByVariableInBulk = Boolean(splitByVariableInput.checked);
+                saveStoredState();
+                rescan();
+            });
+        }
+
         panel.querySelector("#qga-group-all").addEventListener("click", () => toggleGroupAll());
         panel.querySelector("#qga-toggle-selectors").addEventListener("click", () => toggleSelectorsVisibility());
         panel.querySelector("#qga-clear").addEventListener("click", () => clearHighlights());
@@ -1970,6 +1992,9 @@
             state.settings.groupActionSelector = panel.querySelector("#qga-group-selector").value.trim() || DEFAULT_SETTINGS.groupActionSelector;
             state.settings.postGroupRescanDelayMs = clampInt(Number(delayInput.value), 300, 10000, DEFAULT_SETTINGS.postGroupRescanDelayMs);
             delayInput.value = String(state.settings.postGroupRescanDelayMs);
+            if (splitByVariableInput) {
+                state.settings.splitByVariableInBulk = Boolean(splitByVariableInput.checked);
+            }
             saveStoredState();
             setupAutoRescanObserver();
             rescan();
@@ -2044,8 +2069,17 @@
 
             if (normalizedQuestion) {
                 rawText = questionText;
-                normalized = normalizedQuestion;
-                tokens = tokenize(normalized);
+                let groupingKey = normalizedQuestion;
+
+                if (state.settings.splitByVariableInBulk && variablePrefix) {
+                    const normalizedPrefix = normalizeText(variablePrefix);
+                    if (normalizedPrefix) {
+                        groupingKey = `${normalizedQuestion}|var:${normalizedPrefix}`;
+                    }
+                }
+
+                normalized = groupingKey;
+                tokens = tokenize(normalizedQuestion);
             } else if (variablePrefix) {
                 const normalizedPrefix = normalizeText(variablePrefix);
                 if (!normalizedPrefix) {
@@ -2503,12 +2537,11 @@
             }
 
             const total = state.bulkGroupsTotal;
-            const passes = state.bulkPass;
             stopBulkGrouping();
             if (state.bulkPass >= state.bulkMaxPasses && state.bulkGroupsInPass > 0) {
                 alert(`Массовая группировка остановлена: достигнут лимит проходов (${state.bulkMaxPasses}). Обработано кластеров: ${total}.`);
             } else {
-                alert(`Массовая группировка завершена. Обработано кластеров: ${total}. Проходов: ${passes}.`);
+                alert(`Массовая группировка завершена. Обработано кластеров: ${total}.`);
             }
             return;
         }
