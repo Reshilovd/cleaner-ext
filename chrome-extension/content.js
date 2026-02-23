@@ -93,6 +93,7 @@
         bulkPass: 0,
         bulkGroupsInPass: 0,
         bulkGroupsTotal: 0,
+        bulkProgressTotal: null,
         bulkMaxPasses: 8,
         observer: null,
         panel: null,
@@ -101,6 +102,12 @@
         statsRowNode: null,
         loadingNode: null,
         loading: false,
+        progressBarInitialClusterCount: 0,
+        progressBarNode: null,
+        progressBarFill: null,
+        progressBarText: null,
+        progressBarWrap: null,
+        progressBarRemovedOverride: null,
         gridAllPageSizeEnsured: false,
         cleanerAutoFillTriggered: false,
         pyrusHashListenerAttached: false
@@ -1813,6 +1820,28 @@
                 margin-bottom: 4px;
                 min-height: 18px;
             }
+            #${PANEL_ID} .qga-progress-wrap {
+                margin-bottom: 8px;
+                display: none;
+            }
+            #${PANEL_ID} .qga-progress-wrap.qga-progress-visible {
+                display: block;
+            }
+            #${PANEL_ID} .qga-progress-bar {
+                height: 8px;
+                background: #e5e7eb;
+                border-radius: 4px;
+                overflow: hidden;
+            }
+            #${PANEL_ID} .qga-progress-fill {
+                height: 100%;
+                background: #6366f1;
+                border-radius: 4px;
+                transition: width 0.2s ease;
+            }
+            #${PANEL_ID} .qga-progress-text {
+                display: none;
+            }
             #${PANEL_ID} .qga-loading {
                 display: inline-flex;
                 align-items: center;
@@ -1933,6 +1962,12 @@
                         <span>Загрузка…</span>
                     </div>
                 </div>
+                <div class="qga-progress-wrap" id="qga-progress-wrap">
+                    <div class="qga-progress-bar" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+                        <div class="qga-progress-fill" id="qga-progress-fill" style="width:0%"></div>
+                    </div>
+                    <div class="qga-progress-text" id="qga-progress-text"></div>
+                </div>
                 <ul class="qga-list" id="qga-list"></ul>
             </div>
         `;
@@ -1944,6 +1979,10 @@
         state.statsNode = panel.querySelector("#qga-stats");
         state.statsRowNode = panel.querySelector("#qga-stats-row");
         state.loadingNode = panel.querySelector("#qga-loading");
+        state.progressBarWrap = panel.querySelector("#qga-progress-wrap");
+        state.progressBarFill = panel.querySelector("#qga-progress-fill");
+        state.progressBarText = panel.querySelector("#qga-progress-text");
+        state.progressBarNode = panel.querySelector(".qga-progress-bar");
 
         const modeInput = panel.querySelector("#qga-mode");
         const thresholdInput = panel.querySelector("#qga-threshold");
@@ -2081,6 +2120,7 @@
         state.groups = createGroups(state.items, state.mode, state.threshold).filter((group) => group.members.length >= state.settings.minGroupSize);
         state.groups.sort((a, b) => b.members.length - a.members.length);
         renderStats();
+        updateProgressBar();
         // Во время массовой группировки не перерисовываем список кластеров,
         // чтобы он не "скакал" и показывал исходные кластеры.
         if (!state.bulkRunning) {
@@ -2378,6 +2418,45 @@
         state.statsNode.textContent = `Строк: ${rowCount} | сгруппировано строк: ${groupedRows} в ${state.groups.length} кластерах | режим: ${modeText}`;
     }
 
+    function updateProgressBar() {
+        if (!state.progressBarFill || !state.progressBarWrap) {
+            return;
+        }
+        if (state.bulkRunning && state.bulkProgressTotal != null && state.bulkProgressTotal > 0) {
+            const done = state.processedKeys.size;
+            const total = state.bulkProgressTotal;
+            const pct = Math.min(1, done / total);
+            const pctRound = Math.round(pct * 100);
+            state.progressBarFill.style.width = `${pctRound}%`;
+            if (state.progressBarNode) {
+                state.progressBarNode.setAttribute("aria-valuenow", pctRound);
+            }
+            return;
+        }
+        if (!state.bulkRunning) {
+            const current = state.groups.length;
+            state.progressBarInitialClusterCount = Math.max(
+                state.progressBarInitialClusterCount || 0,
+                current
+            );
+        }
+        const initial = state.progressBarInitialClusterCount || 0;
+        if (initial === 0) {
+            state.progressBarFill.style.width = "0%";
+            if (state.progressBarNode) {
+                state.progressBarNode.setAttribute("aria-valuenow", 0);
+            }
+            return;
+        }
+        const removed = initial - state.groups.length;
+        const pct = Math.min(1, Math.max(0, removed / initial));
+        const pctRound = Math.round(pct * 100);
+        state.progressBarFill.style.width = `${pctRound}%`;
+        if (state.progressBarNode) {
+            state.progressBarNode.setAttribute("aria-valuenow", pctRound);
+        }
+    }
+
     function renderGroups() {
         state.listNode.innerHTML = "";
         if (state.groups.length === 0) {
@@ -2644,14 +2723,21 @@
         state.bulkPass = 1;
         state.bulkGroupsInPass = 0;
         state.bulkGroupsTotal = 0;
+        state.bulkProgressTotal = state.groups.length > 0 ? state.groups.length : null;
         state.bulkRunning = true;
         updateBulkButtonState();
+        if (state.progressBarWrap) {
+            state.progressBarWrap.classList.add("qga-progress-visible");
+        }
 
         runBulkGroupingStep();
     }
 
     function stopBulkGrouping() {
         state.bulkRunning = false;
+        if (state.progressBarWrap) {
+            state.progressBarWrap.classList.remove("qga-progress-visible");
+        }
         if (state.bulkTimer) {
             clearTimeout(state.bulkTimer);
             state.bulkTimer = null;
@@ -2857,6 +2943,9 @@
         saveStoredState();
         renderStats();
         markClusterProcessedInUI(groupKey);
+        if (state.bulkRunning) {
+            updateProgressBar();
+        }
     }
 
     function activateSelectControl(control, fallbackNode) {
