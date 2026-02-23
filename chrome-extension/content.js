@@ -1813,9 +1813,6 @@
                 padding: 8px;
                 margin-bottom: 8px;
             }
-            #${PANEL_ID} .qga-group.is-processed {
-                opacity: 0.55;
-            }
             #${PANEL_ID} .qga-group-title {
                 font-weight: 600;
                 margin-bottom: 4px;
@@ -1871,7 +1868,6 @@
                     <button id="qga-group-all">Сгруппировать все</button>
                     <button id="qga-toggle-selectors">Показать селекторы</button>
                     <button id="qga-clear">Снять подсветку</button>
-                    <button id="qga-reset">Сбросить обработанные</button>
                 </div>
             </div>
             <div class="qga-section" id="qga-selectors-section">
@@ -1962,12 +1958,6 @@
         panel.querySelector("#qga-group-all").addEventListener("click", () => toggleGroupAll());
         panel.querySelector("#qga-toggle-selectors").addEventListener("click", () => toggleSelectorsVisibility());
         panel.querySelector("#qga-clear").addEventListener("click", () => clearHighlights());
-        panel.querySelector("#qga-reset").addEventListener("click", () => {
-            state.processedKeys.clear();
-            saveStoredState();
-            renderStats();
-            renderGroups();
-        });
         updateBulkButtonState();
         updateSelectorsVisibility();
 
@@ -2336,22 +2326,20 @@
             selectButton.textContent = "Выбрать";
             selectButton.addEventListener("click", () => selectGroup(group, { markProcessed: true }));
 
+            const clearSelectButton = document.createElement("button");
+            clearSelectButton.textContent = "Снять выбор";
+            clearSelectButton.addEventListener("click", () => {
+                clearCurrentSelections();
+            });
+
             const selectAndGroupButton = document.createElement("button");
             selectAndGroupButton.textContent = "Выбрать + Сгруппировать";
             selectAndGroupButton.addEventListener("click", () => selectAndGroupGroup(group));
 
-            const doneButton = document.createElement("button");
-            doneButton.textContent = state.processedKeys.has(group.key) ? "Отменить \"готово\"" : "Пометить готово";
-            doneButton.addEventListener("click", () => {
-                toggleProcessed(group.key);
-                renderStats();
-                renderGroups();
-            });
-
             actions.appendChild(highlightButton);
             actions.appendChild(selectButton);
+            actions.appendChild(clearSelectButton);
             actions.appendChild(selectAndGroupButton);
-            actions.appendChild(doneButton);
 
             wrapper.appendChild(title);
             wrapper.appendChild(sample);
@@ -2745,15 +2733,6 @@
         saveStoredState();
         renderStats();
         renderGroups();
-    }
-
-    function toggleProcessed(groupKey) {
-        if (state.processedKeys.has(groupKey)) {
-            state.processedKeys.delete(groupKey);
-        } else {
-            state.processedKeys.add(groupKey);
-        }
-        saveStoredState();
     }
 
     function activateSelectControl(control, fallbackNode) {
