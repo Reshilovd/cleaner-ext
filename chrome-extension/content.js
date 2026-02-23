@@ -81,6 +81,7 @@
         mode: "exact",
         threshold: DEFAULT_SETTINGS.similarThreshold,
         items: [],
+        totalRowCount: 0,
         groups: [],
         processedKeys: new Set(),
         highlightedNodes: new Set(),
@@ -1846,6 +1847,11 @@
                 padding: 8px;
                 margin-bottom: 8px;
             }
+            #${PANEL_ID} .qga-group.qga-group--processed .qga-group-title::before {
+                content: "✓ ";
+                color: #059669;
+                font-weight: 700;
+            }
             #${PANEL_ID} .qga-group-title {
                 font-weight: 600;
                 margin-bottom: 4px;
@@ -2061,7 +2067,9 @@
 
     function performRescanCore() {
         setLoading(false);
-        state.items = extractItems();
+        const { items, totalRows } = extractItems();
+        state.items = items;
+        state.totalRowCount = totalRows;
         state.groups = createGroups(state.items, state.mode, state.threshold).filter((group) => group.members.length >= state.settings.minGroupSize);
         state.groups.sort((a, b) => b.members.length - a.members.length);
         renderStats();
@@ -2084,6 +2092,7 @@
         }
 
         const items = [];
+        const totalRows = rows.length;
         for (let i = 0; i < rows.length; i += 1) {
             const node = rows[i];
             const questionText = extractQuestionText(node);
@@ -2133,7 +2142,7 @@
             });
         }
 
-        return items;
+        return { items, totalRows };
     }
 
     function extractQuestionText(node) {
@@ -2352,13 +2361,13 @@
 
         // В массовом режиме показываем монотонную метрику — сколько кластеров уже обработано,
         // чтобы счётчик не "скакал" из‑за пересчёта групп после каждой группировки.
+        const rowCount = state.totalRowCount > 0 ? state.totalRowCount : state.items.length;
         if (state.bulkRunning) {
-            const processedClusters = state.bulkGroupsTotal;
-            state.statsNode.textContent = `Строк: ${state.items.length} | сгруппировано строк: ${groupedRows} | обработано кластеров: ${processedClusters} | режим: ${modeText}`;
+            state.statsNode.textContent = `Строк: ${rowCount} | сгруппировано строк: ${groupedRows} | режим: ${modeText}`;
             return;
         }
 
-        state.statsNode.textContent = `Строк: ${state.items.length} | сгруппировано строк: ${groupedRows} в ${state.groups.length} кластерах | режим: ${modeText}`;
+        state.statsNode.textContent = `Строк: ${rowCount} | сгруппировано строк: ${groupedRows} в ${state.groups.length} кластерах | режим: ${modeText}`;
     }
 
     function renderGroups() {
@@ -2373,6 +2382,7 @@
         state.groups.forEach((group, index) => {
             const wrapper = document.createElement("li");
             wrapper.className = "qga-group";
+            wrapper.setAttribute("data-group-key", group.key);
             if (state.processedKeys.has(group.key)) {
                 wrapper.classList.add("is-processed");
             }
@@ -2613,11 +2623,6 @@
             return;
         }
 
-        const confirmed = confirm("Запустить массовую группировку по всем страницам?");
-        if (!confirmed) {
-            return;
-        }
-
         startBulkGrouping();
     }
 
@@ -2657,10 +2662,7 @@
         // пока их список не опустеет, не фильтруя по processedKeys.
         const next = state.groups[0];
         if (!next) {
-            // Все строки уже обработаны в одном проходе.
-            const total = state.bulkGroupsTotal;
             stopBulkGrouping();
-            alert(`Массовая группировка завершена. Обработано кластеров: ${total}.`);
             return;
         }
 
@@ -2828,14 +2830,23 @@
         setTimeout(() => rescan(), delay + 900);
     }
 
+    function markClusterProcessedInUI(groupKey) {
+        if (!state.listNode) return;
+        const wrapper = Array.from(state.listNode.children).find(
+            (el) => el.getAttribute("data-group-key") === groupKey
+        );
+        if (!wrapper) return;
+        wrapper.classList.add("qga-group--processed");
+        setTimeout(() => {
+            if (wrapper.parentNode) wrapper.remove();
+        }, 1000);
+    }
+
     function markProcessedGroup(groupKey) {
         state.processedKeys.add(groupKey);
         saveStoredState();
         renderStats();
-        // В массовом режиме не трогаем список, чтобы кластеры не исчезали.
-        if (!state.bulkRunning) {
-            renderGroups();
-        }
+        markClusterProcessedInUI(groupKey);
     }
 
     function activateSelectControl(control, fallbackNode) {
