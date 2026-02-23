@@ -2548,8 +2548,11 @@
     function selectGroup(group, options = {}) {
         const markProcessed = options.markProcessed !== false;
         const clearSelection = options.clearSelection !== false && state.settings.clearSelectionBeforeSelect;
+        const silent = options.silent === true;
 
-        highlightGroup(group);
+        if (!silent) {
+            highlightGroup(group, options);
+        }
         if (clearSelection) {
             clearCurrentSelections();
         }
@@ -2693,7 +2696,9 @@
             return;
         }
 
-        selectGroup(next, { markProcessed: false, clearSelection: true });
+        // В массовом режиме не подсвечиваем строки и не скроллим к ним,
+        // чтобы процесс оставался незаметным для пользователя.
+        selectGroup(next, { markProcessed: false, clearSelection: true, silent: true });
         if (!triggerGroupAction({ scheduleRescan: false })) {
             stopBulkGrouping();
             return;
@@ -2918,7 +2923,9 @@
         const hasGroups = Array.isArray(state.groups) && state.groups.length > 0;
         if (bulkButton) {
             bulkButton.textContent = state.bulkRunning ? "Остановить группировку" : "Сгруппировать все";
-            bulkButton.disabled = !hasGroups || state.bulkRunning;
+            // Кнопка должна оставаться активной во время массовой группировки,
+            // чтобы пользователь мог её остановить.
+            bulkButton.disabled = !hasGroups;
         }
 
         if (clearHighlightButton) {
