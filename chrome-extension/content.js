@@ -97,6 +97,10 @@
         panel: null,
         listNode: null,
         statsNode: null,
+        statsRowNode: null,
+        loadingNode: null,
+        loading: false,
+        gridAllPageSizeEnsured: false,
         cleanerAutoFillTriggered: false,
         pyrusHashListenerAttached: false
     };
@@ -1799,7 +1803,35 @@
             #${PANEL_ID} .qga-stats {
                 color: #1f2937;
                 font-size: 11px;
-                margin-bottom: 6px;
+            }
+            #${PANEL_ID} .qga-stats-row {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 8px;
+                margin-bottom: 4px;
+                min-height: 18px;
+            }
+            #${PANEL_ID} .qga-loading {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                gap: 6px;
+                font-size: 11px;
+                color: #6b7280;
+            }
+            #${PANEL_ID} .qga-spinner {
+                width: 12px;
+                height: 12px;
+                border-radius: 999px;
+                border: 2px solid #e5e7eb;
+                border-top-color: #6366f1;
+                animation: qga-spin 0.8s linear infinite;
+            }
+            @keyframes qga-spin {
+                to {
+                    transform: rotate(360deg);
+                }
             }
             #${PANEL_ID} .qga-list {
                 list-style: none;
@@ -1880,7 +1912,13 @@
                 </div>
             </div>
             <div class="qga-section">
-                <div class="qga-stats" id="qga-stats"></div>
+                <div class="qga-stats-row" id="qga-stats-row">
+                    <div class="qga-stats" id="qga-stats"></div>
+                    <div class="qga-loading" id="qga-loading" style="display:none;">
+                        <span class="qga-spinner"></span>
+                        <span>Загрузка…</span>
+                    </div>
+                </div>
                 <ul class="qga-list" id="qga-list"></ul>
             </div>
         `;
@@ -1890,6 +1928,8 @@
         state.panel = panel;
         state.listNode = panel.querySelector("#qga-list");
         state.statsNode = panel.querySelector("#qga-stats");
+        state.statsRowNode = panel.querySelector("#qga-stats-row");
+        state.loadingNode = panel.querySelector("#qga-loading");
 
         const modeInput = panel.querySelector("#qga-mode");
         const thresholdInput = panel.querySelector("#qga-threshold");
@@ -1965,13 +2005,62 @@
         }
     }
 
+    function setLoading(isLoading) {
+        state.loading = Boolean(isLoading);
+        if (state.statsRowNode) {
+            state.statsRowNode.style.justifyContent = state.loading ? "center" : "space-between";
+        }
+        if (!state.loadingNode) {
+            return;
+        }
+        state.loadingNode.style.display = state.loading ? "inline-flex" : "none";
+    }
+
     function rescan() {
+        // Если уже идёт ожидание после переключения размера страницы —
+        // не запускаем повторный пересчёт, дождёмся запланированного.
+        if (state.loading) {
+            return;
+        }
+
         clearHighlights();
         if (!state.groupBlockIndexes || !(state.groupBlockIndexes instanceof Map)) {
             state.groupBlockIndexes = new Map();
         } else {
             state.groupBlockIndexes.clear();
         }
+
+        if (!state.gridAllPageSizeEnsured) {
+            const pageSizeResult = ensureGridPageSizeAll();
+            if (pageSizeResult && pageSizeResult.ensured) {
+                state.gridAllPageSizeEnsured = true;
+                if (pageSizeResult.changed) {
+                    // Грид переключает размер страницы — очищаем старые данные,
+                    // показываем только индикатор загрузки и считаем позже.
+                    state.items = [];
+                    state.groups = [];
+                    if (state.statsNode) {
+                        state.statsNode.textContent = "";
+                    }
+                    if (state.listNode) {
+                        state.listNode.innerHTML = "";
+                    }
+                    updateBulkButtonState();
+
+                    setLoading(true);
+                    setTimeout(() => {
+                        performRescanCore();
+                    }, 2000);
+                    return;
+                }
+            }
+        }
+
+        performRescanCore();
+    }
+
+    function performRescanCore() {
+        setLoading(false);
         state.items = extractItems();
         state.groups = createGroups(state.items, state.mode, state.threshold).filter((group) => group.members.length >= state.settings.minGroupSize);
         state.groups.sort((a, b) => b.members.length - a.members.length);
@@ -2639,6 +2728,75 @@
 
     function getPagerRoot() {
         return document.querySelector("#gridOpenEnds .k-pager-wrap, #gridOpenEnds .k-grid-pager");
+    }
+
+    function ensureGridPageSizeAll() {
+        const pager = getPagerRoot();
+        if (!pager) {
+            return { ensured: false, changed: false };
+        }
+
+        const sizesContainer =
+            pager.querySelector(".k-pager-sizes") ||
+            pager.querySelector("[data-role='dropdownlist'][aria-controls*='gridOpenEnds']") ||
+            null;
+
+        let select = sizesContainer ? sizesContainer.querySelector("select") : null;
+        if (!(select instanceof HTMLSelectElement)) {
+            return { ensured: false, changed: false };
+        }
+
+        const options = Array.from(select.options || []);
+        if (options.length === 0) {
+            return { ensured: false, changed: false };
+        }
+
+        const normalize = (value) => normalizeSingleLine(value).toLowerCase();
+
+        let targetOption = options.find((option) => {
+            const text = normalize(option.textContent || "");
+            const val = normalize(option.value || "");
+            if (!text && !val) {
+                return false;
+            }
+            return (
+                text === "all" ||
+                text === "все" ||
+                text.includes("all") ||
+                text.includes("все") ||
+                val === "all"
+            );
+        });
+
+        if (!targetOption) {
+            let best = null;
+            let bestValue = -Infinity;
+            for (const option of options) {
+                const numeric = Number.parseInt(option.value, 10);
+                if (!Number.isFinite(numeric)) {
+                    continue;
+                }
+                if (numeric > bestValue) {
+                    bestValue = numeric;
+                    best = option;
+                }
+            }
+            targetOption = best || options[options.length - 1];
+        }
+
+        if (!targetOption) {
+            return { ensured: false, changed: false };
+        }
+
+        if (select.value === targetOption.value) {
+            return { ensured: true, changed: false };
+        }
+
+        select.value = targetOption.value;
+        select.dispatchEvent(new Event("change", { bubbles: true }));
+        select.dispatchEvent(new Event("input", { bubbles: true }));
+
+        return { ensured: true, changed: true };
     }
 
     function findPagerNavButton(kind) {
