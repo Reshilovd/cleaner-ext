@@ -1869,6 +1869,14 @@
                 gap: 6px;
                 flex-wrap: wrap;
             }
+            #${PANEL_ID}.qga-bulk-running .qga-group {
+                background-color: #f3f4f6;
+            }
+            #${PANEL_ID}.qga-bulk-running .qga-group button {
+                pointer-events: none;
+                opacity: 0.6;
+                cursor: not-allowed;
+            }
             .${HIGHLIGHT_CLASS} {
                 outline: 2px solid #f59e0b !important;
                 outline-offset: 2px !important;
@@ -2769,6 +2777,8 @@
         if (!state.panel) {
             return;
         }
+        state.panel.classList.toggle("qga-bulk-running", state.bulkRunning);
+
         const bulkButton = state.panel.querySelector("#qga-group-all");
         const clearHighlightButton = state.panel.querySelector("#qga-clear");
         if (!bulkButton && !clearHighlightButton) {
