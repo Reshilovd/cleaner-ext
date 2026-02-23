@@ -1977,6 +1977,7 @@
         state.groups.sort((a, b) => b.members.length - a.members.length);
         renderStats();
         renderGroups();
+        updateBulkButtonState();
     }
 
     function extractItems() {
@@ -2254,9 +2255,8 @@
 
     function renderStats() {
         const groupedRows = state.groups.reduce((sum, group) => sum + group.members.length, 0);
-        const processed = state.groups.filter((group) => state.processedKeys.has(group.key)).length;
         const modeText = state.mode === "exact" ? "точный" : `похожий >= ${state.threshold.toFixed(2)}`;
-        state.statsNode.textContent = `Строк: ${state.items.length} | сгруппировано строк: ${groupedRows} в ${state.groups.length} кластерах | режим: ${modeText} | обработано: ${processed}`;
+        state.statsNode.textContent = `Строк: ${state.items.length} | сгруппировано строк: ${groupedRows} в ${state.groups.length} кластерах | режим: ${modeText}`;
     }
 
     function renderGroups() {
@@ -2324,6 +2324,7 @@
     function clearHighlights() {
         state.highlightedNodes.forEach((node) => node.classList.remove(HIGHLIGHT_CLASS));
         state.highlightedNodes.clear();
+        updateBulkButtonState();
     }
 
     function highlightGroup(group, options = {}) {
@@ -2352,6 +2353,8 @@
         if (scrollTarget) {
             scrollTarget.scrollIntoView({ behavior: scrollBehavior, block: scrollBlock });
         }
+
+        updateBulkButtonState();
     }
 
     function focusNextInGroup(group) {
@@ -2748,11 +2751,22 @@
         if (!state.panel) {
             return;
         }
-        const button = state.panel.querySelector("#qga-group-all");
-        if (!button) {
+        const bulkButton = state.panel.querySelector("#qga-group-all");
+        const clearHighlightButton = state.panel.querySelector("#qga-clear");
+        if (!bulkButton && !clearHighlightButton) {
             return;
         }
-        button.textContent = state.bulkRunning ? "Остановить массовую" : "Сгруппировать все";
+
+        const hasGroups = Array.isArray(state.groups) && state.groups.length > 0;
+        if (bulkButton) {
+            bulkButton.textContent = state.bulkRunning ? "Остановить группировку" : "Сгруппировать все";
+            bulkButton.disabled = !hasGroups || state.bulkRunning;
+        }
+
+        if (clearHighlightButton) {
+            const hasHighlights = state.highlightedNodes && state.highlightedNodes.size > 0;
+            clearHighlightButton.disabled = !hasHighlights;
+        }
     }
 
     function clearCurrentSelections() {
