@@ -35,7 +35,7 @@
         maxItemsForSimilarMode: 1500,
         autoRescan: true,
         clearSelectionBeforeSelect: true,
-        postGroupRescanDelayMs: 1300,
+        postGroupRescanDelayMs: 500,
         splitByVariableInBulk: false
     };
 
@@ -1890,8 +1890,9 @@
                 margin: 0 0 6px 0;
                 color: #4b5563;
                 font-size: 11px;
-                max-height: 40px;
-                overflow: hidden;
+                line-height: 1.35;
+                white-space: pre-wrap;
+                word-break: break-word;
             }
             #${PANEL_ID} .qga-inline-actions {
                 display: flex;
@@ -2782,10 +2783,10 @@
 
         const delay = clampInt(
             Number(state.settings.postGroupRescanDelayMs),
-            300,
+            200,
             10000,
             DEFAULT_SETTINGS.postGroupRescanDelayMs
-        ) + 1200;
+        ) + 400;
 
         state.bulkTimer = setTimeout(() => {
             state.bulkTimer = null;
@@ -2943,7 +2944,7 @@
         wrapper.classList.add("qga-group--processed");
         setTimeout(() => {
             if (wrapper.parentNode) wrapper.remove();
-        }, 1000);
+        }, 300);
     }
 
     function markProcessedGroup(groupKey) {
