@@ -2498,11 +2498,11 @@
 
                 const nextButton = document.createElement("button");
                 nextButton.textContent = "Далее";
-                nextButton.addEventListener("click", () => focusNextInGroup(group));
+                nextButton.addEventListener("click", () => focusNextInGroup(group, { highlight: false }));
 
                 const selectButton = document.createElement("button");
                 selectButton.textContent = "Выбрать";
-                selectButton.addEventListener("click", () => selectGroup(group, { markProcessed: true }));
+                selectButton.addEventListener("click", () => selectGroup(group, { markProcessed: false, silent: true }));
 
                 const clearSelectButton = document.createElement("button");
                 clearSelectButton.textContent = "Снять выбор";
@@ -2563,7 +2563,7 @@
         updateBulkButtonState();
     }
 
-    function focusNextInGroup(group) {
+    function focusNextInGroup(group, options = {}) {
         if (!group || !Array.isArray(group.members) || group.members.length === 0) {
             return;
         }
@@ -2591,6 +2591,18 @@
         const targetBlock = blocks[nextBlockIndex];
         const firstRowOfBlock = targetBlock && targetBlock[0] ? targetBlock[0] : null;
         const isWrapToFirst = nextBlockIndex === 0;
+
+        if (options.highlight === false) {
+            // В режиме «Далее» без подсветки просто скроллим к следующему блоку,
+            // не изменяя текущую подсветку (если она есть).
+            if (firstRowOfBlock && firstRowOfBlock.node) {
+                firstRowOfBlock.node.scrollIntoView({
+                    behavior: isWrapToFirst ? "auto" : "smooth",
+                    block: "nearest"
+                });
+            }
+            return;
+        }
 
         if (firstRowOfBlock && firstRowOfBlock.node) {
             highlightGroup(group, {
