@@ -192,7 +192,6 @@
         state.panel.style.display = "flex";
         state.panelVisible = true;
         updateBulkButtonState();
-        updateSelectorsVisibility();
         setupAutoRescanObserver();
         rescan();
     }
@@ -1876,50 +1875,7 @@
                 </div>
                 <div class="qga-actions">
                     <button id="qga-group-all">Сгруппировать все</button>
-                    <button id="qga-toggle-selectors">Показать селекторы</button>
                     <button id="qga-clear">Снять подсветку</button>
-                </div>
-            </div>
-            <div class="qga-section" id="qga-selectors-section">
-                <div class="qga-row">
-                    <div>
-                        <label for="qga-item-selector">Селектор строк</label>
-                        <input id="qga-item-selector" type="text" />
-                    </div>
-                    <div>
-                        <label for="qga-text-selector">Селектор метки</label>
-                        <input id="qga-text-selector" type="text" />
-                    </div>
-                </div>
-                <div class="qga-row">
-                    <div>
-                        <label for="qga-select-selector">Селектор чекбокса</label>
-                        <input id="qga-select-selector" type="text" />
-                    </div>
-                    <div>
-                        <label for="qga-root-selector">Корневой селектор</label>
-                        <input id="qga-root-selector" type="text" />
-                    </div>
-                </div>
-                <div class="qga-row">
-                    <div>
-                        <label for="qga-variable-selector">Селектор переменной</label>
-                        <input id="qga-variable-selector" type="text" />
-                    </div>
-                    <div></div>
-                </div>
-                <div class="qga-row">
-                    <div>
-                        <label for="qga-group-selector">Селектор кнопки группировки</label>
-                        <input id="qga-group-selector" type="text" />
-                    </div>
-                    <div>
-                        <label for="qga-delay-ms">Задержка пересканирования после группировки (мс)</label>
-                        <input id="qga-delay-ms" type="number" min="300" max="10000" step="100" />
-                    </div>
-                </div>
-                <div class="qga-actions">
-                    <button id="qga-save-settings">Сохранить селекторы</button>
                 </div>
             </div>
             <div class="qga-section">
@@ -1936,22 +1892,13 @@
 
         const modeInput = panel.querySelector("#qga-mode");
         const thresholdInput = panel.querySelector("#qga-threshold");
-        const delayInput = panel.querySelector("#qga-delay-ms");
         const splitByVariableInput = panel.querySelector("#qga-split-by-variable");
 
         modeInput.value = state.mode;
         thresholdInput.value = state.threshold.toFixed(2);
-        delayInput.value = String(state.settings.postGroupRescanDelayMs);
         if (splitByVariableInput) {
             splitByVariableInput.checked = Boolean(state.settings.splitByVariableInBulk);
         }
-
-        panel.querySelector("#qga-item-selector").value = state.settings.itemSelector;
-        panel.querySelector("#qga-text-selector").value = state.settings.textSelector;
-        panel.querySelector("#qga-variable-selector").value = state.settings.variableSelector;
-        panel.querySelector("#qga-select-selector").value = state.settings.selectControlSelector;
-        panel.querySelector("#qga-root-selector").value = state.settings.rootSelector;
-        panel.querySelector("#qga-group-selector").value = state.settings.groupActionSelector;
 
         modeInput.addEventListener("change", () => {
             state.mode = modeInput.value;
@@ -1978,27 +1925,8 @@
         }
 
         panel.querySelector("#qga-group-all").addEventListener("click", () => toggleGroupAll());
-        panel.querySelector("#qga-toggle-selectors").addEventListener("click", () => toggleSelectorsVisibility());
         panel.querySelector("#qga-clear").addEventListener("click", () => clearHighlights());
         updateBulkButtonState();
-        updateSelectorsVisibility();
-
-        panel.querySelector("#qga-save-settings").addEventListener("click", () => {
-            state.settings.itemSelector = panel.querySelector("#qga-item-selector").value.trim() || DEFAULT_SETTINGS.itemSelector;
-            state.settings.textSelector = panel.querySelector("#qga-text-selector").value.trim() || DEFAULT_SETTINGS.textSelector;
-            state.settings.variableSelector = panel.querySelector("#qga-variable-selector").value.trim() || DEFAULT_SETTINGS.variableSelector;
-            state.settings.selectControlSelector = panel.querySelector("#qga-select-selector").value.trim() || DEFAULT_SETTINGS.selectControlSelector;
-            state.settings.rootSelector = panel.querySelector("#qga-root-selector").value.trim() || DEFAULT_SETTINGS.rootSelector;
-            state.settings.groupActionSelector = panel.querySelector("#qga-group-selector").value.trim() || DEFAULT_SETTINGS.groupActionSelector;
-            state.settings.postGroupRescanDelayMs = clampInt(Number(delayInput.value), 300, 10000, DEFAULT_SETTINGS.postGroupRescanDelayMs);
-            delayInput.value = String(state.settings.postGroupRescanDelayMs);
-            if (splitByVariableInput) {
-                state.settings.splitByVariableInBulk = Boolean(splitByVariableInput.checked);
-            }
-            saveStoredState();
-            setupAutoRescanObserver();
-            rescan();
-        });
     }
 
     function setupAutoRescanObserver() {
@@ -2698,26 +2626,6 @@
             return;
         }
         button.textContent = state.bulkRunning ? "Остановить массовую" : "Сгруппировать все";
-    }
-
-    function toggleSelectorsVisibility() {
-        state.selectorsVisible = !state.selectorsVisible;
-        updateSelectorsVisibility();
-    }
-
-    function updateSelectorsVisibility() {
-        if (!state.panel) {
-            return;
-        }
-
-        const section = state.panel.querySelector("#qga-selectors-section");
-        const button = state.panel.querySelector("#qga-toggle-selectors");
-        if (!section || !button) {
-            return;
-        }
-
-        section.style.display = state.selectorsVisible ? "block" : "none";
-        button.textContent = state.selectorsVisible ? "Скрыть селекторы" : "Показать селекторы";
     }
 
     function clearCurrentSelections() {
