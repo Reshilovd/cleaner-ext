@@ -26,6 +26,7 @@
         "https://www.pyrus.com/t*"
       ],
       "js": [
+        "xlsx.full.min.js",
         "content.js"
       ],
       "run_at": "document_idle"

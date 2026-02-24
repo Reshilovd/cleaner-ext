@@ -110,7 +110,15 @@
         progressBarRemovedOverride: null,
         gridAllPageSizeEnsured: false,
         cleanerAutoFillTriggered: false,
-        pyrusHashListenerAttached: false
+        pyrusHashListenerAttached: false,
+        verifyRespondentIndexLoaded: false,
+        verifyRespondentIndexLoading: false,
+        verifyRespondentIndexError: null,
+        verifyRespondentIdByOpenEndId: null,
+        verifyAnswersByRespondentId: null,
+        verifyRespondentIdsByQuestionAndValue: null,
+        verifyRespondentIdsByValueOnly: null,
+        verifyQuestionCode: null
     };
 
     init();
@@ -118,6 +126,11 @@
     function init() {
         if (PAGE_KIND === "openends") {
             initOpenEndsMode();
+            return;
+        }
+
+        if (PAGE_KIND === "openends_verify") {
+            initOpenEndsVerifyMode();
             return;
         }
 
@@ -141,12 +154,138 @@
         });
     }
 
+    function initOpenEndsVerifyMode() {
+        injectStyles();
+        waitForBody(() => {
+            setupVerifyRespondentEnhancements();
+        });
+    }
+
+    function setupVerifyRespondentEnhancements() {
+        const gridRoot = document.querySelector("#grid, #gridOpenEnds");
+        if (!gridRoot) {
+            return;
+        }
+
+        if (!gridRoot.dataset.qgaVerifyBound) {
+            gridRoot.dataset.qgaVerifyBound = "1";
+
+            gridRoot.addEventListener("click", async (event) => {
+                const target = event.target instanceof HTMLElement ? event.target : null;
+                const button = target ? target.closest(".qga-verify-show-respondent") : null;
+                if (!button) {
+                    return;
+                }
+
+                event.preventDefault();
+                event.stopPropagation();
+
+                const row = button.closest("tr");
+                if (!row) {
+                    return;
+                }
+
+                const context = resolveVerifyRowContext(row);
+                if (!context || (!context.openEndId && !context.valueText)) {
+                    alert("Не удалось определить данные ответа для выбранной строки.");
+                    return;
+                }
+
+                try {
+                    const ok = await ensureVerifyRespondentIndexLoaded();
+                    if (!ok) {
+                        const message =
+                            state.verifyRespondentIndexError ||
+                            "Не удалось загрузить выгрузку OpenEnds. Подробности в консоли.";
+                        alert(message);
+                        return;
+                    }
+
+                    const respondentIdMap = state.verifyRespondentIdByOpenEndId;
+                    const answersMap = state.verifyAnswersByRespondentId;
+                    const idsByQuestionAndValue = state.verifyRespondentIdsByQuestionAndValue;
+                    const idsByValueOnly = state.verifyRespondentIdsByValueOnly;
+                    if (!answersMap || (!respondentIdMap && !idsByQuestionAndValue && !idsByValueOnly)) {
+                        alert("Индекс ответов респондентов недоступен.");
+                        return;
+                    }
+
+                    let respondentIds = [];
+
+                    if (respondentIdMap && context.openEndId != null) {
+                        const idFromMap =
+                            respondentIdMap.get(String(context.openEndId)) ||
+                            respondentIdMap.get(String(context.openEndId).trim()) ||
+                            null;
+                        if (idFromMap) {
+                            respondentIds.push(idFromMap);
+                        }
+                    }
+
+                    if (respondentIds.length === 0 && idsByQuestionAndValue) {
+                        const questionCode = getVerifyQuestionCode();
+                        const valueText = context.valueText || "";
+                        if (questionCode && valueText) {
+                            const key = buildVerifyQuestionValueKey(questionCode, valueText);
+                            const fromIndex = idsByQuestionAndValue.get(key);
+                            if (Array.isArray(fromIndex) && fromIndex.length > 0) {
+                                respondentIds = fromIndex.slice();
+                            }
+                        }
+                    }
+
+                    if (respondentIds.length === 0 && idsByValueOnly) {
+                        const valueText = context.valueText || "";
+                        if (valueText) {
+                            const key = buildVerifyValueOnlyKey(valueText);
+                            const fromIndex = idsByValueOnly.get(key);
+                            if (Array.isArray(fromIndex) && fromIndex.length > 0) {
+                                respondentIds = fromIndex.slice();
+                            }
+                        }
+                    }
+
+                    if (respondentIds.length === 0) {
+                        alert(
+                            "Не удалось найти респондента для этого ответа в выгрузке OpenEnds. " +
+                                "Возможные причины: формат файла выгрузки изменился или ответ не попал в файл."
+                        );
+                        return;
+                    }
+
+                    const respondentId = respondentIds[0];
+
+                    const answers =
+                        answersMap.get(String(respondentId)) ||
+                        answersMap.get(String(respondentId).trim()) ||
+                        [];
+
+                    showVerifyRespondentModal(respondentId, answers, context);
+                } catch (error) {
+                    console.error("[QGA] Ошибка при загрузке ответов респондента", error);
+                    alert("Произошла ошибка при загрузке ответов респондента. Подробности в консоли.");
+                }
+            });
+        }
+
+        decorateVerifyRows(gridRoot);
+
+        const observer = new MutationObserver(() => {
+            decorateVerifyRows(gridRoot);
+        });
+        observer.observe(gridRoot, { childList: true, subtree: true });
+    }
+
     function detectPageKind() {
         const host = (window.location.hostname || "").toLowerCase();
         const path = (window.location.pathname || "").toLowerCase();
 
         if (host.endsWith("clr.env7.biz") && path.includes("/lk/project/edit/")) {
             return "openends";
+        }
+
+        if (host.endsWith("clr.env7.biz") && path.includes("/lk/openends2/verifymain")) {
+            return "openends_verify";
         }
 
         if (host.endsWith("pyrus.com") && path.startsWith("/t")) {
@@ -1913,8 +2052,567 @@
                 background-color: rgba(245, 158, 11, 0.08) !important;
                 scroll-margin-top: 120px;
             }
+            .qga-verify-show-respondent {
+                border: 1px solid #cbd5e1;
+                border-radius: 4px;
+                padding: 2px 6px;
+                margin-left: 4px;
+                background: #e5e7eb;
+                color: #111827;
+                cursor: pointer;
+                font-size: 11px;
+                white-space: nowrap;
+            }
+            .qga-verify-show-respondent:hover {
+                background: #dbeafe;
+            }
+            .qga-verify-modal {
+                position: fixed;
+                right: 16px;
+                bottom: 16px;
+                width: 380px;
+                max-height: 60vh;
+                z-index: 2147483647;
+                background: #ffffff;
+                color: #111827;
+                border-radius: 10px;
+                box-shadow: 0 20px 40px rgba(0, 0, 0, 0.25);
+                border: 1px solid #d1d5db;
+                display: none;
+                flex-direction: column;
+                font: 12px/1.4 "Segoe UI", Tahoma, sans-serif;
+                overflow: hidden;
+            }
+            .qga-verify-modal__header {
+                padding: 8px 10px;
+                background: #111827;
+                color: #f9fafb;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 8px;
+            }
+            .qga-verify-modal__title {
+                font-size: 12px;
+                font-weight: 600;
+            }
+            .qga-verify-modal__close {
+                border: none;
+                background: transparent;
+                color: #9ca3af;
+                cursor: pointer;
+                font-size: 14px;
+                padding: 0 4px;
+            }
+            .qga-verify-modal__close:hover {
+                color: #e5e7eb;
+            }
+            .qga-verify-modal__body {
+                padding: 8px 10px;
+                overflow: auto;
+            }
+            .qga-verify-modal__list {
+                list-style: none;
+                margin: 0;
+                padding: 0;
+            }
+            .qga-verify-modal__item {
+                border-bottom: 1px solid #e5e7eb;
+                padding: 6px 0;
+            }
+            .qga-verify-modal__item:last-child {
+                border-bottom: none;
+            }
+            .qga-verify-modal__q {
+                font-weight: 600;
+                font-size: 11px;
+                margin-bottom: 2px;
+            }
+            .qga-verify-modal__text {
+                font-size: 11px;
+                color: #374151;
+                white-space: pre-wrap;
+                word-break: break-word;
+            }
         `;
         document.documentElement.appendChild(style);
+    }
+
+    function decorateVerifyRows(gridRoot) {
+        const rows = gridRoot.querySelectorAll("tr.k-master-row");
+        for (const row of rows) {
+            if (!(row instanceof HTMLTableRowElement)) {
+                continue;
+            }
+            if (row.querySelector(".qga-verify-show-respondent")) {
+                continue;
+            }
+
+            const lastCell =
+                row.querySelector("td:last-child") ||
+                (row.lastElementChild instanceof HTMLTableCellElement ? row.lastElementChild : null);
+            if (!lastCell) {
+                continue;
+            }
+
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "qga-verify-show-respondent";
+            button.textContent = "Ответы респондента";
+
+            lastCell.appendChild(button);
+        }
+    }
+
+    function resolveVerifyRowContext(row) {
+        let openEndId = null;
+        let valueText = "";
+
+        try {
+            if (window.jQuery) {
+                const $ = window.jQuery;
+                const $row = $(row);
+                const gridInstance =
+                    $row.closest("[data-role='grid']").data("kendoGrid") ||
+                    $("#grid").data("kendoGrid") ||
+                    $("#gridOpenEnds").data("kendoGrid") ||
+                    null;
+                if (gridInstance && typeof gridInstance.dataItem === "function") {
+                    const item = gridInstance.dataItem($row);
+                    if (item) {
+                        if (item.Value != null) {
+                            valueText = String(item.Value);
+                        }
+                        if (item.Id != null || item.id != null) {
+                            openEndId = item.Id != null ? item.Id : item.id;
+                        } else {
+                            // Попробуем найти подходящее поле Id эвристически.
+                            const candidateKeys = Object.keys(item);
+                            let bestKey = null;
+                            for (const key of candidateKeys) {
+                                const lower = key.toLowerCase();
+                                if (
+                                    lower === "id" ||
+                                    lower === "openendid" ||
+                                    lower === "openend_id" ||
+                                    (lower.endsWith("id") && lower.includes("open"))
+                                ) {
+                                    bestKey = key;
+                                    break;
+                                }
+                            }
+                            if (!bestKey) {
+                                for (const key of candidateKeys) {
+                                    const lower = key.toLowerCase();
+                                    if (lower.endsWith("id")) {
+                                        bestKey = key;
+                                        break;
+                                    }
+                                }
+                            }
+                            if (bestKey && item[bestKey] != null) {
+                                openEndId = item[bestKey];
+                            } else {
+                                console.warn("[QGA] VerifyMain: не найдено подходящее поле Id в dataItem строки:", item);
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (error) {
+            console.warn("[QGA] Не удалось получить dataItem из kendoGrid для VerifyMain:", error);
+        }
+
+        if (!valueText) {
+            const valueCell = row.querySelector("td[role='gridcell']:nth-child(3)");
+            if (valueCell && valueCell.textContent) {
+                valueText = valueCell.textContent.trim();
+            }
+        }
+
+        if (openEndId == null) {
+            const idCell = row.querySelector("td[role='gridcell'][data-field='Id']");
+            if (idCell && idCell.textContent) {
+                const raw = idCell.textContent.trim();
+                if (raw) {
+                    openEndId = raw;
+                }
+            }
+        }
+
+        return {
+            openEndId,
+            valueText
+        };
+    }
+
+    async function ensureVerifyRespondentIndexLoaded() {
+        if (state.verifyRespondentIndexLoaded) {
+            return true;
+        }
+
+        if (state.verifyRespondentIndexLoading) {
+            alert("Идёт загрузка выгрузки OpenEnds, попробуйте ещё раз через несколько секунд.");
+            return false;
+        }
+
+        const projectId = getProjectIdForVerify();
+        if (!projectId) {
+            state.verifyRespondentIndexError =
+                "Не удалось определить идентификатор проекта (ProjectId) на странице VerifyMain.";
+            console.warn("[QGA] VerifyMain: не найден ProjectId для загрузки выгрузки OpenEnds.");
+            return false;
+        }
+
+        state.verifyRespondentIndexLoading = true;
+        state.verifyRespondentIndexError = null;
+
+        try {
+            const url = `/lk/OpenEnds2/DownloadOpenEnds/${encodeURIComponent(String(projectId))}`;
+            console.info("[QGA] VerifyMain: загрузка выгрузки OpenEnds (XLSX) с", url);
+
+            const response = await fetch(url, { credentials: "include" });
+            if (!response.ok) {
+                state.verifyRespondentIndexError = `Сервер вернул статус ${response.status} при загрузке OpenEnds.`;
+                console.warn("[QGA] VerifyMain: ошибка ответа при загрузке OpenEnds:", response.status);
+                return false;
+            }
+
+            const buffer = await response.arrayBuffer();
+            const parsed = parseOpenEndsFromXlsx(buffer);
+            if (!parsed.ok) {
+                state.verifyRespondentIndexError = parsed.error || "Не удалось разобрать выгрузку OpenEnds.";
+                console.warn("[QGA] VerifyMain: ошибка разбора выгрузки OpenEnds:", parsed.error);
+                return false;
+            }
+
+            state.verifyRespondentIdByOpenEndId = parsed.respondentIdByOpenEndId;
+            state.verifyAnswersByRespondentId = parsed.answersByRespondentId;
+            state.verifyRespondentIdsByQuestionAndValue = parsed.respondentIdsByQuestionAndValue;
+            state.verifyRespondentIdsByValueOnly = parsed.respondentIdsByValueOnly;
+            state.verifyRespondentIndexLoaded = true;
+            console.info("[QGA] VerifyMain: индекс ответов респондентов успешно построен.");
+            return true;
+        } catch (error) {
+            console.error("[QGA] VerifyMain: исключение при загрузке/разборе OpenEnds:", error);
+            state.verifyRespondentIndexError = "Ошибка сети или формата при загрузке выгрузки OpenEnds.";
+            return false;
+        } finally {
+            state.verifyRespondentIndexLoading = false;
+        }
+    }
+
+    function getProjectIdForVerify() {
+        const byId = document.getElementById("ProjectId");
+        if (byId && "value" in byId && byId.value) {
+            return byId.value;
+        }
+
+        const input = document.querySelector("input[name='ProjectId']");
+        if (input && "value" in input && input.value) {
+            return input.value;
+        }
+
+        return null;
+    }
+
+    function parseOpenEndsFromXlsx(arrayBuffer) {
+        if (!(arrayBuffer instanceof ArrayBuffer)) {
+            return { ok: false, error: "Неверный формат данных при загрузке OpenEnds (ожидался ArrayBuffer)." };
+        }
+
+        if (typeof XLSX === "undefined" || typeof XLSX.read !== "function") {
+            return {
+                ok: false,
+                error:
+                    "Для разбора файла OpenEnds (XLSX) не найдена библиотека XLSX. " +
+                    "Убедитесь, что на страницу подключён XLSX (например, xlsx.full.min.js) и доступен глобальный объект XLSX."
+            };
+        }
+
+        let workbook = null;
+        try {
+            workbook = XLSX.read(arrayBuffer, { type: "array" });
+        } catch (error) {
+            console.error("[QGA] Ошибка XLSX.read при разборе OpenEnds:", error);
+            return { ok: false, error: "Не удалось прочитать XLSX-файл OpenEnds (ошибка XLSX.read)." };
+        }
+
+        if (!workbook || !Array.isArray(workbook.SheetNames) || workbook.SheetNames.length === 0) {
+            return { ok: false, error: "Файл OpenEnds не содержит листов или имеет некорректный формат." };
+        }
+
+        const sheetName = workbook.SheetNames[0];
+        const sheet = workbook.Sheets[sheetName];
+        if (!sheet) {
+            return { ok: false, error: "Не удалось найти первый лист в файле OpenEnds." };
+        }
+
+        let rows;
+        try {
+            rows = XLSX.utils.sheet_to_json(sheet, { header: 1, blankrows: false });
+        } catch (error) {
+            console.error("[QGA] Ошибка XLSX.utils.sheet_to_json при разборе OpenEnds:", error);
+            return { ok: false, error: "Не удалось преобразовать XLSX в строки (sheet_to_json)." };
+        }
+
+        if (!Array.isArray(rows) || rows.length < 2) {
+            return { ok: false, error: "Выгрузка OpenEnds пуста или содержит только заголовок." };
+        }
+
+        const headerCells = rows[0].map((cell) => String(cell || "").trim());
+        const headerNormalized = headerCells.map((cell) => cell.toLowerCase());
+        console.info("[QGA] VerifyMain: заголовок OpenEnds XLSX:", headerCells);
+
+        const respondentIndex = headerNormalized.findIndex((name) => {
+            return name === "bfrid" || name.includes("respondent") || name.includes("респондент");
+        });
+
+        const questionIndex = headerNormalized.findIndex((name) => {
+            return (
+                name === "имя переменной" ||
+                name === "variable" ||
+                name.includes("question") ||
+                name.includes("qcode") ||
+                name.includes("var") ||
+                name.includes("variable") ||
+                name.includes("вопрос")
+            );
+        });
+
+        const valueIndex = headerNormalized.findIndex((name) => {
+            return (
+                name === "значение" ||
+                name === "value" ||
+                name.includes("text") ||
+                name.includes("answer") ||
+                name.includes("ответ") ||
+                name.includes("openend")
+            );
+        });
+
+        if (respondentIndex === -1 || questionIndex === -1 || valueIndex === -1) {
+            return {
+                ok: false,
+                error:
+                    "Не удалось автоматически определить столбцы респондента/переменной/значения в выгрузке OpenEnds. " +
+                    "Проверьте формат файла и, при необходимости, обновите логику парсинга в расширении."
+            };
+        }
+
+        const respondentIdByOpenEndId = new Map();
+        const answersByRespondentId = new Map();
+        const respondentIdsByQuestionAndValue = new Map();
+        const respondentIdsByValueOnly = new Map();
+
+        for (let i = 1; i < rows.length; i += 1) {
+            const row = Array.isArray(rows[i]) ? rows[i] : [];
+            if (row.length === 0) {
+                continue;
+            }
+
+            const respondentIdRaw = String(row[respondentIndex] || "").trim();
+            if (!respondentIdRaw) {
+                continue;
+            }
+
+            const respondentId = respondentIdRaw;
+            const openEndIdCell = row.find((_, idx) => {
+                const name = headerNormalized[idx];
+                if (!name) {
+                    return false;
+                }
+                return (
+                    name === "id" ||
+                    name === "openid" ||
+                    name === "openend_id" ||
+                    name.includes("openendid") ||
+                    (name.endsWith("id") && name.includes("open"))
+                );
+            });
+            const openEndId = openEndIdCell != null ? String(openEndIdCell).trim() || null : null;
+
+            let question = "";
+            let value = "";
+
+            if (questionIndex >= 0 && questionIndex < row.length) {
+                question = String(row[questionIndex] || "").trim();
+            }
+            if (valueIndex >= 0 && valueIndex < row.length) {
+                value = String(row[valueIndex] || "").trim();
+            }
+
+            if (openEndId) {
+                respondentIdByOpenEndId.set(openEndId, respondentId);
+            }
+
+            if (!answersByRespondentId.has(respondentId)) {
+                answersByRespondentId.set(respondentId, []);
+            }
+
+            answersByRespondentId.get(respondentId).push({
+                openEndId,
+                question,
+                value
+            });
+
+            if (question && value) {
+                const key = buildVerifyQuestionValueKey(question, value);
+                if (!respondentIdsByQuestionAndValue.has(key)) {
+                    respondentIdsByQuestionAndValue.set(key, []);
+                }
+                respondentIdsByQuestionAndValue.get(key).push(respondentId);
+            }
+
+            if (value) {
+                const valueKey = buildVerifyValueOnlyKey(value);
+                if (!respondentIdsByValueOnly.has(valueKey)) {
+                    respondentIdsByValueOnly.set(valueKey, []);
+                }
+                respondentIdsByValueOnly.get(valueKey).push(respondentId);
+            }
+        }
+
+        return {
+            ok: true,
+            respondentIdByOpenEndId,
+            answersByRespondentId,
+            respondentIdsByQuestionAndValue,
+            respondentIdsByValueOnly
+        };
+    }
+
+    function buildVerifyQuestionValueKey(questionCode, valueText) {
+        const q = String(questionCode || "").trim().toLowerCase();
+        const v = String(valueText || "")
+            .replace(/\s+/g, " ")
+            .trim()
+            .toLowerCase();
+        return `${q}||${v}`;
+    }
+
+    function buildVerifyValueOnlyKey(valueText) {
+        return String(valueText || "")
+            .replace(/\s+/g, " ")
+            .trim()
+            .toLowerCase();
+    }
+
+    function getVerifyQuestionCode() {
+        if (typeof state.verifyQuestionCode === "string" && state.verifyQuestionCode) {
+            return state.verifyQuestionCode;
+        }
+
+        let candidate = "";
+
+        const headerNode = document.querySelector("#grid, #gridOpenEnds")?.previousElementSibling;
+        const sources = [];
+        if (headerNode && headerNode.textContent) {
+            sources.push(headerNode.textContent);
+        }
+        const titleNode = document.querySelector("body");
+        if (titleNode && titleNode.textContent) {
+            sources.push(titleNode.textContent);
+        }
+
+        const combined = sources.join("\n");
+        const match = combined.match(/(Q[0-9A-Za-z_]+(?:_other)?)/);
+        if (match && match[1]) {
+            candidate = match[1];
+        }
+
+        state.verifyQuestionCode = candidate || null;
+        return state.verifyQuestionCode;
+    }
+
+    function showVerifyRespondentModal(respondentId, answers, context) {
+        let modal = document.querySelector(".qga-verify-modal");
+        if (!modal) {
+            modal = document.createElement("aside");
+            modal.className = "qga-verify-modal";
+            modal.innerHTML = `
+                <div class="qga-verify-modal__header">
+                    <div class="qga-verify-modal__title"></div>
+                    <button type="button" class="qga-verify-modal__close" aria-label="Закрыть">×</button>
+                </div>
+                <div class="qga-verify-modal__body">
+                    <ul class="qga-verify-modal__list"></ul>
+                </div>
+            `;
+
+            const closeButton = modal.querySelector(".qga-verify-modal__close");
+            if (closeButton) {
+                closeButton.addEventListener("click", () => {
+                    modal.style.display = "none";
+                });
+            }
+
+            document.documentElement.appendChild(modal);
+        }
+
+        const titleNode = modal.querySelector(".qga-verify-modal__title");
+        const listNode = modal.querySelector(".qga-verify-modal__list");
+
+        if (titleNode) {
+            titleNode.textContent = `Ответы респондента ${respondentId}`;
+        }
+
+        if (listNode) {
+            listNode.innerHTML = "";
+
+            if (!answers || answers.length === 0) {
+                const empty = document.createElement("li");
+                empty.className = "qga-verify-modal__item";
+                empty.textContent = "Другие ответы этого респондента в выгрузке не найдены.";
+                listNode.appendChild(empty);
+            } else {
+                for (const answer of answers) {
+                    const item = document.createElement("li");
+                    item.className = "qga-verify-modal__item";
+
+                    const q = document.createElement("div");
+                    q.className = "qga-verify-modal__q";
+                    q.textContent = answer.question || `OpenEnd Id: ${answer.openEndId}`;
+
+                    const text = document.createElement("div");
+                    text.className = "qga-verify-modal__text";
+                    text.textContent = answer.value || "";
+
+                    item.appendChild(q);
+                    item.appendChild(text);
+                    listNode.appendChild(item);
+                }
+            }
+        }
+
+        modal.style.display = "flex";
+        return context;
+    }
+
+    function decorateVerifyRows(gridRoot) {
+        const rows = gridRoot.querySelectorAll("tr.k-master-row");
+        for (const row of rows) {
+            if (!(row instanceof HTMLTableRowElement)) {
+                continue;
+            }
+            if (row.querySelector(".qga-verify-show-respondent")) {
+                continue;
+            }
+
+            const lastCell =
+                row.querySelector("td:last-child") ||
+                (row.lastElementChild instanceof HTMLTableCellElement ? row.lastElementChild : null);
+            if (!lastCell) {
+                continue;
+            }
+
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "qga-verify-show-respondent";
+            button.textContent = "Ответы респондента";
+
+            lastCell.appendChild(button);
+        }
     }
 
     function buildPanel() {
