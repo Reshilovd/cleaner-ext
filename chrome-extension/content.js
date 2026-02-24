@@ -2052,19 +2052,33 @@
                 background-color: rgba(245, 158, 11, 0.08) !important;
                 scroll-margin-top: 120px;
             }
+            .qga-verify-cell {
+                position: relative;
+            }
             .qga-verify-show-respondent {
+                position: absolute;
+                right: 2px;
+                top: 50%;
+                transform: translateY(-50%);
                 border: 1px solid #cbd5e1;
                 border-radius: 4px;
-                padding: 2px 6px;
-                margin-left: 4px;
+                padding: 1px 4px;
+                margin: 0;
                 background: #e5e7eb;
                 color: #111827;
                 cursor: pointer;
-                font-size: 11px;
+                font-size: 9px;
                 white-space: nowrap;
             }
             .qga-verify-show-respondent:hover {
                 background: #dbeafe;
+            }
+            .qga-verify-cell-wrap {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 6px;
+                white-space: nowrap;
             }
             .qga-verify-modal {
                 position: fixed;
@@ -2136,32 +2150,6 @@
             }
         `;
         document.documentElement.appendChild(style);
-    }
-
-    function decorateVerifyRows(gridRoot) {
-        const rows = gridRoot.querySelectorAll("tr.k-master-row");
-        for (const row of rows) {
-            if (!(row instanceof HTMLTableRowElement)) {
-                continue;
-            }
-            if (row.querySelector(".qga-verify-show-respondent")) {
-                continue;
-            }
-
-            const lastCell =
-                row.querySelector("td:last-child") ||
-                (row.lastElementChild instanceof HTMLTableCellElement ? row.lastElementChild : null);
-            if (!lastCell) {
-                continue;
-            }
-
-            const button = document.createElement("button");
-            button.type = "button";
-            button.className = "qga-verify-show-respondent";
-            button.textContent = "Ответы респондента";
-
-            lastCell.appendChild(button);
-        }
     }
 
     function resolveVerifyRowContext(row) {
@@ -2606,10 +2594,12 @@
                 continue;
             }
 
+            lastCell.classList.add("qga-verify-cell");
+
             const button = document.createElement("button");
             button.type = "button";
             button.className = "qga-verify-show-respondent";
-            button.textContent = "Ответы респондента";
+            button.textContent = "Респ.";
 
             lastCell.appendChild(button);
         }
