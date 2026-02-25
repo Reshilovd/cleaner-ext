@@ -253,14 +253,19 @@
                         return;
                     }
 
-                    const respondentId = respondentIds[0];
+                    const uniqueIds = Array.from(new Set(respondentIds.map((id) => String(id))));
 
-                    const answers =
-                        answersMap.get(String(respondentId)) ||
-                        answersMap.get(String(respondentId).trim()) ||
-                        [];
+                    if (uniqueIds.length === 1) {
+                        const respondentId = uniqueIds[0];
+                        const answers =
+                            answersMap.get(String(respondentId)) ||
+                            answersMap.get(String(respondentId).trim()) ||
+                            [];
 
-                    showVerifyRespondentModal(respondentId, answers, context);
+                        showVerifyRespondentModal(respondentId, answers, context);
+                    } else {
+                        showVerifyRespondentCandidates(uniqueIds, answersMap, context);
+                    }
                 } catch (error) {
                     console.error("[QGA] Ошибка при загрузке ответов респондента", error);
                     alert("Произошла ошибка при загрузке ответов респондента. Подробности в консоли.");
@@ -2471,19 +2476,17 @@
     }
 
     function buildVerifyQuestionValueKey(questionCode, valueText) {
-        const q = String(questionCode || "").trim().toLowerCase();
+        const q = String(questionCode || "").trim();
         const v = String(valueText || "")
             .replace(/\s+/g, " ")
-            .trim()
-            .toLowerCase();
+            .trim();
         return `${q}||${v}`;
     }
 
     function buildVerifyValueOnlyKey(valueText) {
         return String(valueText || "")
             .replace(/\s+/g, " ")
-            .trim()
-            .toLowerCase();
+            .trim();
     }
 
     function getVerifyQuestionCode() {
@@ -2570,6 +2573,95 @@
                     item.appendChild(text);
                     listNode.appendChild(item);
                 }
+            }
+        }
+
+        modal.style.display = "flex";
+        return context;
+    }
+
+    function showVerifyRespondentCandidates(respondentIds, answersMap, context) {
+        let modal = document.querySelector(".qga-verify-modal");
+        if (!modal) {
+            modal = document.createElement("aside");
+            modal.className = "qga-verify-modal";
+            modal.innerHTML = `
+                <div class="qga-verify-modal__header">
+                    <div class="qga-verify-modal__title"></div>
+                    <button type="button" class="qga-verify-modal__close" aria-label="Закрыть">×</button>
+                </div>
+                <div class="qga-verify-modal__body">
+                    <div class="qga-verify-modal__hint"></div>
+                    <ul class="qga-verify-modal__list"></ul>
+                </div>
+            `;
+
+            const closeButton = modal.querySelector(".qga-verify-modal__close");
+            if (closeButton) {
+                closeButton.addEventListener("click", () => {
+                    modal.style.display = "none";
+                });
+            }
+
+            document.documentElement.appendChild(modal);
+        }
+
+        const titleNode = modal.querySelector(".qga-verify-modal__title");
+        const hintNode = modal.querySelector(".qga-verify-modal__hint");
+        const listNode = modal.querySelector(".qga-verify-modal__list");
+
+        if (titleNode) {
+            titleNode.textContent = "Респонденты с данным ответом";
+        }
+
+        if (hintNode) {
+            hintNode.textContent =
+                "Найдено несколько респондентов с таким же ответом в выгрузке. " +
+                "Ниже показаны все варианты, так как однозначно определить одного нельзя.";
+            hintNode.style.fontSize = "11px";
+            hintNode.style.color = "#4b5563";
+            hintNode.style.marginBottom = "6px";
+        }
+
+        if (listNode) {
+            listNode.innerHTML = "";
+
+            for (const respondentId of respondentIds) {
+                const answers =
+                    answersMap.get(String(respondentId)) ||
+                    answersMap.get(String(respondentId).trim()) ||
+                    [];
+
+                const headerItem = document.createElement("li");
+                headerItem.className = "qga-verify-modal__item";
+
+                const header = document.createElement("div");
+                header.className = "qga-verify-modal__q";
+                header.textContent = `Респондент ${respondentId}`;
+
+                headerItem.appendChild(header);
+
+                if (!answers || answers.length === 0) {
+                    const empty = document.createElement("div");
+                    empty.className = "qga-verify-modal__text";
+                    empty.textContent = "Другие ответы этого респондента в выгрузке не найдены.";
+                    headerItem.appendChild(empty);
+                } else {
+                    for (const answer of answers) {
+                        const q = document.createElement("div");
+                        q.className = "qga-verify-modal__q";
+                        q.textContent = answer.question || `OpenEnd Id: ${answer.openEndId}`;
+
+                        const text = document.createElement("div");
+                        text.className = "qga-verify-modal__text";
+                        text.textContent = answer.value || "";
+
+                        headerItem.appendChild(q);
+                        headerItem.appendChild(text);
+                    }
+                }
+
+                listNode.appendChild(headerItem);
             }
         }
 
