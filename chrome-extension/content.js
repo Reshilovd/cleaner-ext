@@ -21,6 +21,7 @@
     const PYRUS_QUICK_FILL_BUTTON_ID = "qga-pyrus-quick-fill-single";
     const PYRUS_QUICK_FILL_WRAPPER_CLASS = "qga-pyrus-quick-fill-wrapper";
     const CLEANER_AUTO_FILL_QUERY_KEY = "qga_autofill";
+    const MANUAL_BFRIDS_STORAGE_KEY = "__qga_manual_bfrids_v1__";
     const PAGE_KIND = detectPageKind();
 
     const DEFAULT_SETTINGS = {
@@ -121,6 +122,8 @@
         verifyQuestionCode: null
     };
 
+    let manualBfridsState = loadManualBfridsState();
+
     init();
 
     function init() {
@@ -151,6 +154,7 @@
         waitForBody(() => {
             buildPanel();
             hidePanel();
+            setupManualPageIntegration();
         });
     }
 
@@ -158,6 +162,7 @@
         injectStyles();
         waitForBody(() => {
             setupVerifyRespondentEnhancements();
+            setupVerifyMainManualIntegration();
         });
     }
 
@@ -279,6 +284,24 @@
             decorateVerifyRows(gridRoot);
         });
         observer.observe(gridRoot, { childList: true, subtree: true });
+    }
+
+    function setupVerifyMainManualIntegration() {
+        const button = document.querySelector("button[onclick='verifyValues()']");
+        if (!button) {
+            return;
+        }
+        if (button.dataset.qgaManualBfridBound === "1") {
+            return;
+        }
+        button.dataset.qgaManualBfridBound = "1";
+
+        button.addEventListener("click", () => {
+            // Выполняем асинхронно, не мешая стандартной логике verifyValues().
+            handleVerifyMainManualBfrids().catch((error) => {
+                console.error("[QGA] Ошибка при сборе bfrid для ручной чистки:", error);
+            });
+        });
     }
 
     function detectPageKind() {
@@ -2062,9 +2085,9 @@
             }
             .qga-verify-show-respondent {
                 position: absolute;
-                right: 2px;
+                left: 50%;
                 top: 50%;
-                transform: translateY(-50%);
+                transform: translate(-50%, -50%);
                 border: 1px solid #cbd5e1;
                 border-radius: 4px;
                 padding: 1px 4px;
@@ -2295,6 +2318,117 @@
         }
     }
 
+    async function handleVerifyMainManualBfrids() {
+        const gridRoot = document.querySelector("#grid, #gridOpenEnds");
+        if (!gridRoot) {
+            return;
+        }
+
+        const projectId = getProjectIdForVerify();
+        if (!projectId) {
+            return;
+        }
+
+        const manualCheckboxes = gridRoot.querySelectorAll("tr.k-master-row .qga-manual-checkbox");
+        if (!manualCheckboxes.length) {
+            return;
+        }
+
+        const rowsToProcess = [];
+        for (const checkbox of manualCheckboxes) {
+            if (!(checkbox instanceof HTMLInputElement)) {
+                continue;
+            }
+            if (!checkbox.checked) {
+                continue;
+            }
+            const row = checkbox.closest("tr.k-master-row");
+            if (row) {
+                rowsToProcess.push(row);
+            }
+        }
+
+        if (rowsToProcess.length === 0) {
+            return;
+        }
+
+        const ok = await ensureVerifyRespondentIndexLoaded();
+        if (!ok) {
+            const message =
+                state.verifyRespondentIndexError ||
+                "Не удалось загрузить выгрузку OpenEnds для получения bfrid. Подробности в консоли.";
+            alert(message);
+            return;
+        }
+
+        const respondentIdMap = state.verifyRespondentIdByOpenEndId;
+        const idsByQuestionAndValue = state.verifyRespondentIdsByQuestionAndValue;
+        const idsByValueOnly = state.verifyRespondentIdsByValueOnly;
+
+        const collectedIds = new Set();
+
+        for (const row of rowsToProcess) {
+            const context = resolveVerifyRowContext(row);
+            if (!context || (!context.openEndId && !context.valueText)) {
+                continue;
+            }
+
+            let respondentIds = [];
+
+            if (respondentIdMap && context.openEndId != null) {
+                const idFromMap =
+                    respondentIdMap.get(String(context.openEndId)) ||
+                    respondentIdMap.get(String(context.openEndId).trim()) ||
+                    null;
+                if (idFromMap) {
+                    respondentIds.push(idFromMap);
+                }
+            }
+
+            if (respondentIds.length === 0 && idsByQuestionAndValue) {
+                const questionCode = getVerifyQuestionCode();
+                const valueText = context.valueText || "";
+                if (questionCode && valueText) {
+                    const key = buildVerifyQuestionValueKey(questionCode, valueText);
+                    const fromIndex = idsByQuestionAndValue.get(key);
+                    if (Array.isArray(fromIndex) && fromIndex.length > 0) {
+                        respondentIds = fromIndex.slice();
+                    }
+                }
+            }
+
+            if (respondentIds.length === 0 && idsByValueOnly) {
+                const valueText = context.valueText || "";
+                if (valueText) {
+                    const key = buildVerifyValueOnlyKey(valueText);
+                    const fromIndex = idsByValueOnly.get(key);
+                    if (Array.isArray(fromIndex) && fromIndex.length > 0) {
+                        respondentIds = fromIndex.slice();
+                    }
+                }
+            }
+
+            for (const id of respondentIds) {
+                const normalized = String(id).trim();
+                if (normalized) {
+                    collectedIds.add(normalized);
+                }
+            }
+        }
+
+        if (!collectedIds.size) {
+            return;
+        }
+
+        addManualBfridsForProject(projectId, Array.from(collectedIds));
+        console.info(
+            "[QGA] Добавлено bfrid в буфер ручной чистки для проекта",
+            projectId,
+            "кол-во:",
+            collectedIds.size
+        );
+    }
+
     function getProjectIdForVerify() {
         const byId = document.getElementById("ProjectId");
         if (byId && "value" in byId && byId.value) {
@@ -2307,6 +2441,125 @@
         }
 
         return null;
+    }
+
+    function loadManualBfridsState() {
+        try {
+            const raw = localStorage.getItem(MANUAL_BFRIDS_STORAGE_KEY);
+            if (!raw) {
+                return {};
+            }
+            const parsed = JSON.parse(raw);
+            if (!parsed || typeof parsed !== "object") {
+                return {};
+            }
+            return parsed;
+        } catch (error) {
+            console.warn("[QGA] Не удалось прочитать состояние bfrid для ручной чистки из localStorage:", error);
+            return {};
+        }
+    }
+
+    function saveManualBfridsState(stateObject) {
+        try {
+            localStorage.setItem(MANUAL_BFRIDS_STORAGE_KEY, JSON.stringify(stateObject || {}));
+        } catch (error) {
+            console.warn("[QGA] Не удалось сохранить состояние bfrid для ручной чистки в localStorage:", error);
+        }
+    }
+
+    function addManualBfridsForProject(projectId, bfrids) {
+        if (!projectId || !Array.isArray(bfrids) || bfrids.length === 0) {
+            return;
+        }
+        const key = String(projectId);
+        const current = Array.isArray(manualBfridsState[key]) ? manualBfridsState[key] : [];
+        const set = new Set(current.map((x) => String(x).trim()).filter(Boolean));
+        for (const id of bfrids) {
+            const normalized = String(id).trim();
+            if (normalized) {
+                set.add(normalized);
+            }
+        }
+        manualBfridsState[key] = Array.from(set);
+        saveManualBfridsState(manualBfridsState);
+    }
+
+    function consumeManualBfridsForProject(projectId) {
+        if (!projectId) {
+            return [];
+        }
+        const key = String(projectId);
+        const current = Array.isArray(manualBfridsState[key]) ? manualBfridsState[key] : [];
+        if (!current.length) {
+            return [];
+        }
+        delete manualBfridsState[key];
+        saveManualBfridsState(manualBfridsState);
+        return current.map((x) => String(x).trim()).filter(Boolean);
+    }
+
+    function setupManualPageIntegration() {
+        const projectId = getProjectIdForVerify();
+        if (!projectId) {
+            return;
+        }
+
+        const attach = () => {
+            const button = document.getElementById("btnEditManual");
+            if (!button) {
+                return;
+            }
+            if (button.dataset.qgaManualBfridBound === "1") {
+                return;
+            }
+            button.dataset.qgaManualBfridBound = "1";
+
+            button.addEventListener("click", () => {
+                // Даём штатной логике editManual() переключить режим и показать textarea,
+                // затем подставляем bfrid из буфера.
+                setTimeout(() => {
+                    try {
+                        applyManualBfridsToTextarea(projectId);
+                    } catch (error) {
+                        console.error("[QGA] Ошибка при применении bfrid к ручной чистке:", error);
+                    }
+                }, 0);
+            });
+        };
+
+        attach();
+
+        const observer = new MutationObserver(() => {
+            attach();
+        });
+        observer.observe(document.body, { childList: true, subtree: true });
+    }
+
+    function applyManualBfridsToTextarea(projectId) {
+        const textarea = document.getElementById("Bfrids");
+        if (!textarea) {
+            return;
+        }
+
+        const bfrids = consumeManualBfridsForProject(projectId);
+        if (!bfrids.length) {
+            return;
+        }
+
+        const existingRaw = textarea.value || "";
+        const existingSet = new Set(
+            existingRaw
+                .split(/[\s,;]+/)
+                .map((x) => x.trim())
+                .filter(Boolean)
+        );
+
+        for (const id of bfrids) {
+            existingSet.add(String(id).trim());
+        }
+
+        textarea.value = Array.from(existingSet).join("\n");
     }
 
     function parseOpenEndsFromXlsx(arrayBuffer) {
@@ -2670,30 +2923,129 @@
     }
 
     function decorateVerifyRows(gridRoot) {
+        const headerRow = gridRoot.querySelector(".k-grid-header thead tr[role='row']");
+        if (headerRow) {
+            const headerCells = headerRow.querySelectorAll("th[role='columnheader']");
+            const lastHeaderCell =
+                headerCells[headerCells.length - 1] || headerRow.querySelector("th:last-child");
+
+            if (lastHeaderCell && !headerRow.querySelector(".qga-manual-header")) {
+                const manualHeader = document.createElement("th");
+                manualHeader.scope = "col";
+                manualHeader.role = "columnheader";
+                manualHeader.className = "k-header qga-manual-header";
+                manualHeader.style.textAlign = "center";
+                manualHeader.textContent = "Ручная";
+
+                headerRow.insertBefore(manualHeader, lastHeaderCell);
+            }
+
+            if (lastHeaderCell && !headerRow.querySelector(".qga-resp-header")) {
+                const respHeader = document.createElement("th");
+                respHeader.scope = "col";
+                respHeader.role = "columnheader";
+                respHeader.className = "k-header qga-resp-header";
+                respHeader.style.textAlign = "center";
+                respHeader.textContent = "Другие ответы";
+
+                const next = lastHeaderCell.nextSibling;
+                headerRow.insertBefore(respHeader, next || null);
+            }
+
+            // Обновляем colgroup в шапке и в теле грида, чтобы добавить колонки
+            // «Ручная» и «Респ.» и немного сузить «Отложить».
+            const updateColgroup = (root) => {
+                const colgroup = root ? root.querySelector("colgroup") : null;
+                if (!colgroup) {
+                    return;
+                }
+                if (colgroup.querySelector("col.qga-manual-col") || colgroup.querySelector("col.qga-resp-col")) {
+                    return;
+                }
+                const cols = colgroup.querySelectorAll("col");
+                if (!cols.length) {
+                    return;
+                }
+                const lastCol = cols[cols.length - 1];
+
+                const manualCol = document.createElement("col");
+                manualCol.className = "qga-manual-col";
+                manualCol.style.width = "90px";
+                colgroup.insertBefore(manualCol, lastCol);
+
+                const respCol = document.createElement("col");
+                respCol.className = "qga-resp-col";
+                respCol.style.width = "170px";
+                colgroup.appendChild(respCol);
+
+                lastCol.style.width = "110px";
+            };
+
+            const headerWrap = gridRoot.querySelector(".k-grid-header-wrap");
+            const contentWrap = gridRoot.querySelector(".k-grid-content");
+            updateColgroup(headerWrap);
+            updateColgroup(contentWrap);
+        }
+
         const rows = gridRoot.querySelectorAll("tr.k-master-row");
         for (const row of rows) {
             if (!(row instanceof HTMLTableRowElement)) {
                 continue;
             }
-            if (row.querySelector(".qga-verify-show-respondent")) {
-                continue;
-            }
 
+            const cells = row.querySelectorAll("td[role='gridcell']");
             const lastCell =
+                cells[cells.length - 1] ||
                 row.querySelector("td:last-child") ||
                 (row.lastElementChild instanceof HTMLTableCellElement ? row.lastElementChild : null);
             if (!lastCell) {
                 continue;
             }
 
-            lastCell.classList.add("qga-verify-cell");
+            // Вставляем колонку "Ручная" перед колонкой "Отложить".
+            if (!row.querySelector("td.qga-manual-cell")) {
+                const manualCell = document.createElement("td");
+                manualCell.className = "qga-manual-cell";
+                manualCell.setAttribute("role", "gridcell");
+                manualCell.style.textAlign = "center";
 
-            const button = document.createElement("button");
-            button.type = "button";
-            button.className = "qga-verify-show-respondent";
-            button.textContent = "Респ.";
+                const manualCheckbox = document.createElement("input");
+                manualCheckbox.type = "checkbox";
+                manualCheckbox.className = "k-checkbox qga-manual-checkbox";
+                manualCheckbox.title = "Добавить в ручную чистку";
 
-            lastCell.appendChild(button);
+                manualCell.appendChild(manualCheckbox);
+                row.insertBefore(manualCell, lastCell);
+            }
+
+            // Добавляем отдельную колонку "Респ." после "Отложить".
+            if (!row.querySelector("td.qga-resp-cell")) {
+                const respCell = document.createElement("td");
+                respCell.className = "qga-resp-cell qga-verify-cell";
+                respCell.setAttribute("role", "gridcell");
+                respCell.style.textAlign = "center";
+                respCell.style.verticalAlign = "middle";
+                respCell.style.padding = "0";
+
+                const wrap = document.createElement("div");
+                wrap.className = "qga-verify-cell-wrap";
+                wrap.style.display = "flex";
+                wrap.style.alignItems = "center";
+                wrap.style.justifyContent = "center";
+                wrap.style.width = "100%";
+                wrap.style.height = "100%";
+
+                const button = document.createElement("button");
+                button.type = "button";
+                button.className = "qga-verify-show-respondent";
+                button.textContent = "Посмотреть";
+
+                wrap.appendChild(button);
+                respCell.appendChild(wrap);
+
+                const next = lastCell.nextSibling;
+                row.insertBefore(respCell, next || null);
+            }
         }
     }
 
