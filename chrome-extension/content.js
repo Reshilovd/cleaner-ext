@@ -3259,6 +3259,98 @@
                 const next = lastCell.nextSibling;
                 row.insertBefore(respCell, next || null);
             }
+
+            setupVerifyRowExclusiveCheckboxes(gridRoot, row);
+        }
+    }
+
+    function setupVerifyRowExclusiveCheckboxes(gridRoot, row) {
+        if (!gridRoot || !row || !(row instanceof HTMLTableRowElement)) {
+            return;
+        }
+        if (row.dataset.qgaExclusiveCheckboxesBound === "1") {
+            return;
+        }
+        row.dataset.qgaExclusiveCheckboxesBound = "1";
+
+        const headerRow = gridRoot.querySelector(".k-grid-header thead tr[role='row']");
+        const headerCells = headerRow
+            ? headerRow.querySelectorAll("th[role='columnheader']")
+            : null;
+
+        let incorrectIndex = -1;
+        let postponeIndex = -1;
+
+        if (headerCells && headerCells.length) {
+            for (let i = 0; i < headerCells.length; i += 1) {
+                const text = (headerCells[i].textContent || "").trim().toLowerCase();
+                if (incorrectIndex === -1 && text.includes("некоррект")) {
+                    incorrectIndex = i;
+                }
+                if (postponeIndex === -1 && text.includes("отлож")) {
+                    postponeIndex = i;
+                }
+            }
+        }
+
+        const cells = row.querySelectorAll("td[role='gridcell']");
+        if (!cells.length) {
+            return;
+        }
+
+        const incorrectCell =
+            incorrectIndex >= 0 && incorrectIndex < cells.length ? cells[incorrectIndex] : null;
+        const incorrectCheckbox = incorrectCell
+            ? incorrectCell.querySelector("input[type='checkbox']")
+            : null;
+
+        const manualCheckbox = row.querySelector("input.qga-manual-checkbox");
+
+        const postponeCell =
+            postponeIndex >= 0 && postponeIndex < cells.length ? cells[postponeIndex] : null;
+        const postponeCheckbox = postponeCell
+            ? postponeCell.querySelector("input[type='checkbox']")
+            : null;
+
+        const group = [incorrectCheckbox, manualCheckbox, postponeCheckbox].filter(
+            (cb) => cb instanceof HTMLInputElement
+        );
+        if (group.length <= 1) {
+            return;
+        }
+
+        const handleChange = (changed) => {
+            if (!(changed instanceof HTMLInputElement)) {
+                return;
+            }
+            if (!changed.checked) {
+                return;
+            }
+
+            for (const cb of group) {
+                if (cb === changed) {
+                    continue;
+                }
+                if (!(cb instanceof HTMLInputElement)) {
+                    continue;
+                }
+                if (!cb.checked) {
+                    continue;
+                }
+                cb.checked = false;
+                cb.dispatchEvent(
+                    new Event("change", {
+                        bubbles: true
+                    })
+                );
+            }
+        };
+
+        for (const cb of group) {
+            if (!(cb instanceof HTMLInputElement)) {
+                continue;
+            }
+            cb.addEventListener("change", () => handleChange(cb));
         }
     }
 
