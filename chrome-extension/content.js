@@ -2094,6 +2094,9 @@
                 background-color: rgba(245, 158, 11, 0.08) !important;
                 scroll-margin-top: 120px;
             }
+            tr.k-master-row.qga-manual-row > td {
+                background-color: #fff9c4 !important;
+            }
             .qga-verify-cell {
                 position: relative;
             }
@@ -3323,7 +3326,15 @@
             if (!(changed instanceof HTMLInputElement)) {
                 return;
             }
-            if (!changed.checked) {
+            const isChecked = !!changed.checked;
+
+            if (isChecked && changed === manualCheckbox) {
+                row.classList.add("qga-manual-row");
+            } else if (!isChecked && changed === manualCheckbox) {
+                row.classList.remove("qga-manual-row");
+            }
+
+            if (!isChecked) {
                 return;
             }
 
@@ -3351,6 +3362,11 @@
                 continue;
             }
             cb.addEventListener("change", () => handleChange(cb));
+        }
+
+        // Инициализируем цвет строки, если "Ручная" уже была отмечена до навешивания обработчиков.
+        if (manualCheckbox && manualCheckbox.checked) {
+            row.classList.add("qga-manual-row");
         }
     }
 
