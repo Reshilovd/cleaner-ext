@@ -2701,14 +2701,34 @@
                     response.status,
                     response.statusText
                 );
-            } else {
-                console.info(
-                    "[QGA] Успешно обновлена ручная чистка через API для проекта",
-                    projectId,
-                    "кол-во новых bfrid:",
-                    bfrids.length
-                );
+                return;
             }
+
+            // Успешно сохранили на сервере: обновляем локальный снимок,
+            // чтобы в следующих запросах не затирать уже добавленные id
+            // и не слать повторно одни и те же bfrid.
+            try {
+                const key = String(projectId);
+                const prev =
+                    manualApiState && typeof manualApiState[key] === "object"
+                        ? manualApiState[key]
+                        : {};
+
+                manualApiState[key] = {
+                    token: verificationToken || prev.token || "",
+                    bfrids: mergedBfrids
+                };
+                saveManualApiState(manualApiState);
+            } catch (updateError) {
+                console.warn("[QGA] Не удалось обновить локальный снимок API ручной чистки:", updateError);
+            }
+
+            console.info(
+                "[QGA] Успешно обновлена ручная чистка через API для проекта",
+                projectId,
+                "кол-во новых bfrid:",
+                bfrids.length
+            );
         } catch (error) {
             console.error("[QGA] Ошибка при запросе сохранения ручной чистки:", error);
         }
