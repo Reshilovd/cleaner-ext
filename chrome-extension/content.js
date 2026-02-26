@@ -22,6 +22,7 @@
     const PYRUS_QUICK_FILL_WRAPPER_CLASS = "qga-pyrus-quick-fill-wrapper";
     const CLEANER_AUTO_FILL_QUERY_KEY = "qga_autofill";
     const MANUAL_BFRIDS_STORAGE_KEY = "__qga_manual_bfrids_v1__";
+    const MANUAL_API_STATE_STORAGE_KEY = "__qga_manual_api_state_v1__";
     const PAGE_KIND = detectPageKind();
 
     const DEFAULT_SETTINGS = {
@@ -123,6 +124,7 @@
     };
 
     let manualBfridsState = loadManualBfridsState();
+    let manualApiState = loadManualApiState();
 
     init();
 
@@ -296,12 +298,24 @@
         }
         button.dataset.qgaManualBfridBound = "1";
 
-        button.addEventListener("click", () => {
-            // Выполняем асинхронно, не мешая стандартной логике verifyValues().
+        const parent = button.parentElement || button.closest("div, span, td, th") || document.body;
+        const extraButton = document.createElement("button");
+        extraButton.type = "button";
+        extraButton.textContent = "Добавить в ручную чистку";
+        extraButton.className = (button.className || "") + " qga-manual-clean-trigger";
+        extraButton.style.marginLeft = "8px";
+
+        extraButton.addEventListener("click", () => {
             handleVerifyMainManualBfrids().catch((error) => {
                 console.error("[QGA] Ошибка при сборе bfrid для ручной чистки:", error);
             });
         });
+
+        if (button.nextSibling) {
+            parent.insertBefore(extraButton, button.nextSibling);
+        } else {
+            parent.appendChild(extraButton);
+        }
     }
 
     function detectPageKind() {
@@ -2420,7 +2434,16 @@
             return;
         }
 
-        addManualBfridsForProject(projectId, Array.from(collectedIds));
+        const idsArray = Array.from(collectedIds);
+
+        addManualBfridsForProject(projectId, idsArray);
+
+        try {
+            await sendManualBfridsToServer(projectId, idsArray);
+        } catch (error) {
+            console.error("[QGA] Ошибка при отправке bfrid в ручную чистку через API:", error);
+        }
+
         console.info(
             "[QGA] Добавлено bfrid в буфер ручной чистки для проекта",
             projectId,
@@ -2465,6 +2488,31 @@
             localStorage.setItem(MANUAL_BFRIDS_STORAGE_KEY, JSON.stringify(stateObject || {}));
         } catch (error) {
             console.warn("[QGA] Не удалось сохранить состояние bfrid для ручной чистки в localStorage:", error);
+        }
+    }
+
+    function loadManualApiState() {
+        try {
+            const raw = localStorage.getItem(MANUAL_API_STATE_STORAGE_KEY);
+            if (!raw) {
+                return {};
+            }
+            const parsed = JSON.parse(raw);
+            if (!parsed || typeof parsed !== "object") {
+                return {};
+            }
+            return parsed;
+        } catch (error) {
+            console.warn("[QGA] Не удалось прочитать состояние API ручной чистки из localStorage:", error);
+            return {};
+        }
+    }
+
+    function saveManualApiState(stateObject) {
+        try {
+            localStorage.setItem(MANUAL_API_STATE_STORAGE_KEY, JSON.stringify(stateObject || {}));
+        } catch (error) {
+            console.warn("[QGA] Не удалось сохранить состояние API ручной чистки в localStorage:", error);
         }
     }
 
@@ -2559,7 +2607,152 @@
             existingSet.add(String(id).trim());
         }
 
-        textarea.value = Array.from(existingSet).join("\n");
+        const merged = Array.from(existingSet).join("\n");
+        textarea.value = merged;
+
+        // Сохраняем актуальное состояние Bfrids и токен для этого проекта,
+        // чтобы затем вызывать API с VerifyMain без дополнительных запросов.
+        try {
+            const token = findVerificationTokenInDocument(document);
+            const key = String(projectId);
+            const prev =
+                manualApiState && typeof manualApiState[key] === "object" ? manualApiState[key] : {};
+
+            manualApiState[key] = {
+                token: token || prev.token || "",
+                bfrids: merged
+            };
+            saveManualApiState(manualApiState);
+        } catch (error) {
+            console.warn("[QGA] Не удалось сохранить состояние API ручной чистки:", error);
+        }
+    }
+
+    async function sendManualBfridsToServer(projectId, bfrids) {
+        if (!projectId || !Array.isArray(bfrids) || bfrids.length === 0) {
+            return;
+        }
+
+        const manualUrl = buildManualEditPostUrl(projectId);
+        if (!manualUrl) {
+            console.warn("[QGA] Не удалось определить URL для ручной чистки.");
+            return;
+        }
+
+        const key = String(projectId);
+        const stored =
+            manualApiState && typeof manualApiState[key] === "object" ? manualApiState[key] : null;
+
+        const existingBfridsRaw =
+            stored && typeof stored.bfrids === "string" ? stored.bfrids : "";
+
+        let verificationToken =
+            stored && typeof stored.token === "string" ? stored.token : "" ||
+            findVerificationTokenInDocument(document);
+
+        if (!verificationToken) {
+            console.warn(
+                "[QGA] Не удалось найти __RequestVerificationToken для проекта",
+                projectId
+            );
+            alert(
+                "Не удалось найти токен для ручной чистки. " +
+                    "Откройте вкладку «Ручная чистка» этого проекта хотя бы один раз, " +
+                    "а затем попробуйте снова."
+            );
+            return;
+        }
+
+        const mergedSet = new Set(
+            existingBfridsRaw
+                .split(/[\s,;]+/)
+                .map((x) => x.trim())
+                .filter(Boolean)
+        );
+
+        for (const id of bfrids) {
+            const normalized = String(id).trim();
+            if (normalized) {
+                mergedSet.add(normalized);
+            }
+        }
+
+        const mergedBfrids = Array.from(mergedSet).join("\n");
+
+        const body = new URLSearchParams();
+        body.set("ProjectId", String(projectId));
+        body.set("Bfrids", mergedBfrids);
+        body.set("__RequestVerificationToken", verificationToken);
+
+        try {
+            const response = await fetch(manualUrl, {
+                method: "POST",
+                credentials: "same-origin",
+                headers: {
+                    "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+                    "X-Requested-With": "XMLHttpRequest"
+                },
+                body: body.toString()
+            });
+
+            if (!response.ok) {
+                console.error(
+                    "[QGA] Не удалось сохранить данные ручной чистки через API:",
+                    response.status,
+                    response.statusText
+                );
+            } else {
+                console.info(
+                    "[QGA] Успешно обновлена ручная чистка через API для проекта",
+                    projectId,
+                    "кол-во новых bfrid:",
+                    bfrids.length
+                );
+            }
+        } catch (error) {
+            console.error("[QGA] Ошибка при запросе сохранения ручной чистки:", error);
+        }
+    }
+
+    function findVerificationTokenInDocument(doc) {
+        if (!doc || typeof doc.querySelector !== "function") {
+            return "";
+        }
+
+        const selectors = [
+            "input[name='__RequestVerificationToken']",
+            "input[name$='RequestVerificationToken']",
+            "input[name*='RequestVerificationToken']"
+        ];
+
+        for (const selector of selectors) {
+            const input = doc.querySelector(selector);
+            if (input && "value" in input && input.value) {
+                return String(input.value);
+            }
+        }
+
+        return "";
+    }
+
+    function buildManualEditPostUrl(projectId) {
+        if (!projectId) {
+            return null;
+        }
+        const origin = window.location.origin || "";
+        const base = origin.replace(/\/+$/, "");
+        // POST /api/Project/Manual/{ProjectId} — как в стандартном запросе.
+        return base + "/api/Project/Manual/" + encodeURIComponent(String(projectId));
+    }
+
+    function buildProjectEditUrl(projectId) {
+        if (!projectId) {
+            return null;
+        }
+        const origin = window.location.origin || "";
+        const base = origin.replace(/\/+$/, "");
+        // Страница редактирования проекта, где есть вкладка «Ручная чистка» и форма с токеном.
+        return base + "/lk/Project/Edit/" + encodeURIComponent(String(projectId));
     }
 
     function parseOpenEndsFromXlsx(arrayBuffer) {
