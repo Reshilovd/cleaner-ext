@@ -300,61 +300,32 @@
 
         const parent = button.parentElement || button.closest("div, span, td, th") || document.body;
         const extraButton = document.createElement("button");
-        extraButton.type = "button";
-        extraButton.textContent = "Добавить в ручную чистку";
-        extraButton.className = (button.className || "") + " qga-manual-clean-trigger";
-        extraButton.style.marginLeft = "8px";
+        extraButton.type = button.type || "button";
+        extraButton.textContent = button.textContent || "Проверить страницу";
+        extraButton.className = button.className || "";
 
-        extraButton.addEventListener("click", () => {
-            handleVerifyMainManualBfrids().catch((error) => {
+        extraButton.addEventListener("click", async () => {
+            try {
+                await handleVerifyMainManualBfrids({ clearManualSelection: true });
+            } catch (error) {
                 console.error("[QGA] Ошибка при сборе bfrid для ручной чистки:", error);
-            });
+            }
+
+            try {
+                button.click();
+            } catch (error) {
+                console.error("[QGA] Не удалось запустить стандартную проверку страницы:", error);
+            }
         });
+
+        // Прячем оригинальную кнопку проверки страницы, чтобы пользователь видел только одну,
+        // но продолжали использовать её штатный обработчик onclick="verifyValues()".
+        button.style.display = "none";
 
         if (button.nextSibling) {
             parent.insertBefore(extraButton, button.nextSibling);
         } else {
             parent.appendChild(extraButton);
-        }
-
-        const global = window;
-        const originalVerifyValues =
-            typeof global.verifyValues === "function" ? global.verifyValues : null;
-        if (originalVerifyValues && !originalVerifyValues.__qgaManualClearPatched) {
-            const patchedVerifyValues = function patchedVerifyValues(...args) {
-                try {
-                    const gridRoot = document.querySelector("#grid, #gridOpenEnds");
-                    if (gridRoot) {
-                        const manualCheckboxes = gridRoot.querySelectorAll(
-                            "tr.k-master-row .qga-manual-checkbox"
-                        );
-                        for (const cb of manualCheckboxes) {
-                            if (!(cb instanceof HTMLInputElement)) {
-                                continue;
-                            }
-                            if (!cb.checked) {
-                                continue;
-                            }
-                            cb.checked = false;
-                            cb.dispatchEvent(
-                                new Event("change", {
-                                    bubbles: true
-                                })
-                            );
-                        }
-                    }
-                } catch (error) {
-                    console.error(
-                        "[QGA] Ошибка при очистке чекбоксов 'Ручная' перед verifyValues():",
-                        error
-                    );
-                }
-
-                return originalVerifyValues.apply(this, args);
-            };
-
-            patchedVerifyValues.__qgaManualClearPatched = true;
-            global.verifyValues = patchedVerifyValues;
         }
     }
 
@@ -2452,6 +2423,7 @@
 
             let respondentIds = [];
 
+            // 1) Прямое соответствие по openEndId (обычный случай: одна строка = один респондент).
             if (respondentIdMap && context.openEndId != null) {
                 const idFromMap =
                     respondentIdMap.get(String(context.openEndId)) ||
@@ -2462,6 +2434,7 @@
                 }
             }
 
+            // 2) Если по openEndId ничего не нашли, используем индексы по вопросу и значению.
             if (respondentIds.length === 0 && idsByQuestionAndValue) {
                 const questionCode = getVerifyQuestionCode();
                 const valueText = context.valueText || "";
@@ -2474,6 +2447,7 @@
                 }
             }
 
+            // 3) Последний резерв — индекс только по значению (если нет кода вопроса).
             if (respondentIds.length === 0 && idsByValueOnly) {
                 const valueText = context.valueText || "";
                 if (valueText) {
