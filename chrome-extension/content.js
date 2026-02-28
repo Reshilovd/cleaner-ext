@@ -128,12 +128,6 @@
         verifyPendingManualBfrids: new Set()
     };
 
-    let manualBfridsState = loadManualBfridsState();
-    let manualApiState = loadManualApiState();
-    let ratingIncorrectIdsState = loadRatingIncorrectIdsState();
-    let verifyIncorrectIdsState = loadVerifyIncorrectIdsState();
-
-    init();
 
     function init() {
         if (PAGE_KIND === "openends") {
@@ -2441,7 +2435,6 @@
         `;
         document.documentElement.appendChild(style);
     }
-
     function resolveVerifyRowContext(row) {
         let openEndId = null;
         let valueText = "";
@@ -5292,4 +5285,10 @@
             }
         }
     }
+    let manualBfridsState = loadManualBfridsState();
+    let manualApiState = loadManualApiState();
+    let ratingIncorrectIdsState = loadRatingIncorrectIdsState();
+    let verifyIncorrectIdsState = loadVerifyIncorrectIdsState();
+
+    init();
 })();
