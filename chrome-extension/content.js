@@ -23,6 +23,7 @@
     const CLEANER_AUTO_FILL_QUERY_KEY = "qga_autofill";
     const MANUAL_BFRIDS_STORAGE_KEY = "__qga_manual_bfrids_v1__";
     const MANUAL_API_STATE_STORAGE_KEY = "__qga_manual_api_state_v1__";
+    const OPENENDS_GROUPS_STORAGE_KEY = "__qga_openends_groups_v1__";
     const PAGE_KIND = detectPageKind();
 
     const DEFAULT_SETTINGS = {
@@ -116,11 +117,13 @@
         verifyRespondentIndexLoaded: false,
         verifyRespondentIndexLoading: false,
         verifyRespondentIndexError: null,
-        verifyRespondentIdByOpenEndId: null,
+        verifyRespondentIdsByOpenEndId: null,
         verifyAnswersByRespondentId: null,
         verifyRespondentIdsByQuestionAndValue: null,
         verifyRespondentIdsByValueOnly: null,
-        verifyQuestionCode: null
+        verifyQuestionCode: null,
+        /** ID респондентов, отмеченных в модалке «Другие ответы» для добавления в ручную чистку при нажатии «Проверить страницу». */
+        verifyPendingManualBfrids: new Set()
     };
 
     let manualBfridsState = loadManualBfridsState();
@@ -161,9 +164,17 @@
             buildPanel();
             hidePanel();
             setupManualPageIntegration();
+            const scheduleCollectGroups = () => {
+                if (isOpenEndsHash()) {
+                    setTimeout(collectOpenEndsGroupsFromPage, 500);
+                }
+            };
+            scheduleCollectGroups();
             window.addEventListener("hashchange", () => {
                 if (!isOpenEndsHash() && state.panel) {
                     hidePanel();
+                } else {
+                    scheduleCollectGroups();
                 }
             });
         });
@@ -217,24 +228,74 @@
                         return;
                     }
 
-                    const respondentIdMap = state.verifyRespondentIdByOpenEndId;
+                    const respondentIdsByOpenEndId = state.verifyRespondentIdsByOpenEndId;
                     const answersMap = state.verifyAnswersByRespondentId;
                     const idsByQuestionAndValue = state.verifyRespondentIdsByQuestionAndValue;
                     const idsByValueOnly = state.verifyRespondentIdsByValueOnly;
-                    if (!answersMap || (!respondentIdMap && !idsByQuestionAndValue && !idsByValueOnly)) {
+                    if (!answersMap || (!respondentIdsByOpenEndId && !idsByQuestionAndValue && !idsByValueOnly)) {
                         alert("Индекс ответов респондентов недоступен.");
                         return;
                     }
 
                     let respondentIds = [];
 
-                    if (respondentIdMap && context.openEndId != null) {
-                        const idFromMap =
-                            respondentIdMap.get(String(context.openEndId)) ||
-                            respondentIdMap.get(String(context.openEndId).trim()) ||
-                            null;
-                        if (idFromMap) {
-                            respondentIds.push(idFromMap);
+                    if (respondentIdsByOpenEndId && respondentIdsByOpenEndId.size > 0) {
+                        if (context.openEndId != null) {
+                            const key = String(context.openEndId).trim();
+                            const idsFromMap =
+                                respondentIdsByOpenEndId.get(key) ||
+                                respondentIdsByOpenEndId.get(String(context.openEndId)) ||
+                                [];
+                            if (Array.isArray(idsFromMap) && idsFromMap.length > 0) {
+                                respondentIds = idsFromMap.slice();
+                            }
+                        }
+                        // Выгрузка без колонки openEndId заполняет карту по ключу «переменная||значение». При сгруппированном вопросе ищем по списку переменных из заголовка.
+                        if (respondentIds.length === 0) {
+                            const questionCode = getVerifyQuestionCode();
+                            const valueText = context.valueText || "";
+                            if (questionCode && valueText) {
+                                const groupedCodes = getVerifyGroupedVariableCodes(questionCode);
+                                if (groupedCodes.length > 1) {
+                                    const collected = new Set();
+                                    for (const code of groupedCodes) {
+                                        const key = buildVerifyQuestionValueKey(code, valueText);
+                                        const arr = respondentIdsByOpenEndId.get(key) || [];
+                                        if (Array.isArray(arr)) arr.forEach((id) => collected.add(String(id)));
+                                    }
+                                    if (collected.size > 0) respondentIds = Array.from(collected);
+                                }
+                                if (respondentIds.length === 0) {
+                                    const singleCode = getVerifyQuestionBaseCode(questionCode);
+                                    const compositeKey = buildVerifyQuestionValueKey(singleCode, valueText);
+                                    const fromMap = respondentIdsByOpenEndId.get(compositeKey);
+                                    if (Array.isArray(fromMap) && fromMap.length > 0) {
+                                        respondentIds = fromMap.slice();
+                                    }
+                                }
+                                if (respondentIds.length === 0) {
+                                    const singleCode = getVerifyQuestionBaseCode(questionCode);
+                                    const altKey = buildVerifyQuestionValueKey(
+                                        singleCode.replace(/\./g, "_"),
+                                        valueText
+                                    );
+                                    const fromAlt = respondentIdsByOpenEndId.get(altKey);
+                                    if (Array.isArray(fromAlt) && fromAlt.length > 0) {
+                                        respondentIds = fromAlt.slice();
+                                    }
+                                }
+                                if (respondentIds.length === 0) {
+                                    const singleCode = getVerifyQuestionBaseCode(questionCode);
+                                    const altKey2 = buildVerifyQuestionValueKey(
+                                        singleCode.replace(/_/g, "."),
+                                        valueText
+                                    );
+                                    const fromAlt2 = respondentIdsByOpenEndId.get(altKey2);
+                                    if (Array.isArray(fromAlt2) && fromAlt2.length > 0) {
+                                        respondentIds = fromAlt2.slice();
+                                    }
+                                }
+                            }
                         }
                     }
 
@@ -242,10 +303,45 @@
                         const questionCode = getVerifyQuestionCode();
                         const valueText = context.valueText || "";
                         if (questionCode && valueText) {
-                            const key = buildVerifyQuestionValueKey(questionCode, valueText);
-                            const fromIndex = idsByQuestionAndValue.get(key);
-                            if (Array.isArray(fromIndex) && fromIndex.length > 0) {
-                                respondentIds = fromIndex.slice();
+                            const groupedCodes = getVerifyGroupedVariableCodes(questionCode);
+                            if (groupedCodes.length > 1) {
+                                const collected = new Set();
+                                for (const code of groupedCodes) {
+                                    const key = buildVerifyQuestionValueKey(code, valueText);
+                                    const arr = idsByQuestionAndValue.get(key) || [];
+                                    if (Array.isArray(arr)) arr.forEach((id) => collected.add(String(id)));
+                                }
+                                if (collected.size > 0) respondentIds = Array.from(collected);
+                            }
+                            if (respondentIds.length === 0) {
+                                const singleCode = getVerifyQuestionBaseCode(questionCode);
+                                const key = buildVerifyQuestionValueKey(singleCode, valueText);
+                                const fromIndex = idsByQuestionAndValue.get(key);
+                                if (Array.isArray(fromIndex) && fromIndex.length > 0) {
+                                    respondentIds = fromIndex.slice();
+                                }
+                            }
+                            if (respondentIds.length === 0) {
+                                const singleCode = getVerifyQuestionBaseCode(questionCode);
+                                const altKey = buildVerifyQuestionValueKey(
+                                    singleCode.replace(/\./g, "_"),
+                                    valueText
+                                );
+                                const fromAlt = idsByQuestionAndValue.get(altKey);
+                                if (Array.isArray(fromAlt) && fromAlt.length > 0) {
+                                    respondentIds = fromAlt.slice();
+                                }
+                            }
+                            if (respondentIds.length === 0) {
+                                const singleCode = getVerifyQuestionBaseCode(questionCode);
+                                const altKey2 = buildVerifyQuestionValueKey(
+                                    singleCode.replace(/_/g, "."),
+                                    valueText
+                                );
+                                const fromAlt2 = idsByQuestionAndValue.get(altKey2);
+                                if (Array.isArray(fromAlt2) && fromAlt2.length > 0) {
+                                    respondentIds = fromAlt2.slice();
+                                }
                             }
                         }
                     }
@@ -314,12 +410,18 @@
         extraButton.className = button.className || "";
 
         extraButton.addEventListener("click", async () => {
-            try {
-                await handleVerifyMainManualBfrids({ clearManualSelection: true });
-            } catch (error) {
-                console.error("[QGA] Ошибка при сборе bfrid для ручной чистки:", error);
+            if (state.verifyPendingManualBfrids && state.verifyPendingManualBfrids.size > 0) {
+                const ids = Array.from(state.verifyPendingManualBfrids);
+                try {
+                    await sendRespondentIdsToManualCleanup(ids);
+                    state.verifyPendingManualBfrids.clear();
+                    document.querySelectorAll(".qga-verify-modal-manual-checkbox").forEach((cb) => {
+                        if (cb instanceof HTMLInputElement) cb.checked = false;
+                    });
+                } catch (error) {
+                    console.error("[QGA] Ошибка при отправке выбранных в ручную чистку:", error);
+                }
             }
-
             try {
                 button.click();
             } catch (error) {
@@ -2115,9 +2217,6 @@
                 background-color: rgba(245, 158, 11, 0.08) !important;
                 scroll-margin-top: 120px;
             }
-            tr.k-master-row.qga-manual-row > td {
-                background-color: #fff9c4 !important;
-            }
             .qga-verify-cell {
                 position: relative;
             }
@@ -2235,6 +2334,19 @@
             }
             .qga-verify-modal__item > .qga-verify-modal__text:last-child {
                 margin-bottom: 0;
+            }
+            .qga-verify-modal__footer {
+                margin-top: 10px;
+                padding-top: 10px;
+                border-top: 1px solid #e5e7eb;
+            }
+            .qga-verify-modal__footer-label {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                cursor: pointer;
+                font-size: 12px;
+                color: #374151;
             }
         `;
         document.documentElement.appendChild(style);
@@ -2380,7 +2492,7 @@
                 return false;
             }
 
-            state.verifyRespondentIdByOpenEndId = parsed.respondentIdByOpenEndId;
+            state.verifyRespondentIdsByOpenEndId = parsed.respondentIdsByOpenEndId;
             state.verifyAnswersByRespondentId = parsed.answersByRespondentId;
             state.verifyRespondentIdsByQuestionAndValue = parsed.respondentIdsByQuestionAndValue;
             state.verifyRespondentIdsByValueOnly = parsed.respondentIdsByValueOnly;
@@ -2396,145 +2508,41 @@
         }
     }
 
-    async function handleVerifyMainManualBfrids(options) {
-        const gridRoot = document.querySelector("#grid, #gridOpenEnds");
-        if (!gridRoot) {
+    /** Отправить выбранные respondent ID в ручную чистку (вызывается из модалки «Другие ответы»). */
+    async function sendRespondentIdsToManualCleanup(idsArray) {
+        if (!idsArray || idsArray.length === 0) {
             return;
         }
-
         const projectId = getProjectIdForVerify();
         if (!projectId) {
+            alert("Не удалось определить проект.");
             return;
         }
-
-        const manualCheckboxes = gridRoot.querySelectorAll("tr.k-master-row .qga-manual-checkbox");
-        if (!manualCheckboxes.length) {
-            return;
-        }
-
-        const rowsToProcess = [];
-        const manualCheckboxesToClear = [];
-        for (const checkbox of manualCheckboxes) {
-            if (!(checkbox instanceof HTMLInputElement)) {
-                continue;
-            }
-            if (!checkbox.checked) {
-                continue;
-            }
-            const row = checkbox.closest("tr.k-master-row");
-            if (row) {
-                rowsToProcess.push(row);
-                manualCheckboxesToClear.push(checkbox);
-            }
-        }
-
-        if (rowsToProcess.length === 0) {
-            return;
-        }
-
         const ok = await ensureVerifyRespondentIndexLoaded();
         if (!ok) {
             const message =
                 state.verifyRespondentIndexError ||
-                "Не удалось загрузить выгрузку OpenEnds для получения bfrid. Подробности в консоли.";
+                "Не удалось загрузить выгрузку OpenEnds. Подробности в консоли.";
             alert(message);
             return;
         }
-
-        const respondentIdMap = state.verifyRespondentIdByOpenEndId;
-        const idsByQuestionAndValue = state.verifyRespondentIdsByQuestionAndValue;
-        const idsByValueOnly = state.verifyRespondentIdsByValueOnly;
-
-        const collectedIds = new Set();
-
-        for (const row of rowsToProcess) {
-            const context = resolveVerifyRowContext(row);
-            if (!context || (!context.openEndId && !context.valueText)) {
-                continue;
-            }
-
-            let respondentIds = [];
-
-            // 1) Прямое соответствие по openEndId (обычный случай: одна строка = один респондент).
-            if (respondentIdMap && context.openEndId != null) {
-                const idFromMap =
-                    respondentIdMap.get(String(context.openEndId)) ||
-                    respondentIdMap.get(String(context.openEndId).trim()) ||
-                    null;
-                if (idFromMap) {
-                    respondentIds.push(idFromMap);
-                }
-            }
-
-            // 2) Если по openEndId ничего не нашли, используем индексы по вопросу и значению.
-            if (respondentIds.length === 0 && idsByQuestionAndValue) {
-                const questionCode = getVerifyQuestionCode();
-                const valueText = context.valueText || "";
-                if (questionCode && valueText) {
-                    const key = buildVerifyQuestionValueKey(questionCode, valueText);
-                    const fromIndex = idsByQuestionAndValue.get(key);
-                    if (Array.isArray(fromIndex) && fromIndex.length > 0) {
-                        respondentIds = fromIndex.slice();
-                    }
-                }
-            }
-
-            // 3) Последний резерв — индекс только по значению (если нет кода вопроса).
-            if (respondentIds.length === 0 && idsByValueOnly) {
-                const valueText = context.valueText || "";
-                if (valueText) {
-                    const key = buildVerifyValueOnlyKey(valueText);
-                    const fromIndex = idsByValueOnly.get(key);
-                    if (Array.isArray(fromIndex) && fromIndex.length > 0) {
-                        respondentIds = fromIndex.slice();
-                    }
-                }
-            }
-
-            for (const id of respondentIds) {
-                const normalized = String(id).trim();
-                if (normalized) {
-                    collectedIds.add(normalized);
-                }
-            }
-        }
-
-        if (!collectedIds.size) {
+        const normalized = idsArray.map((id) => String(id).trim()).filter(Boolean);
+        if (normalized.length === 0) {
             return;
         }
-
-        const idsArray = Array.from(collectedIds);
-
-        addManualBfridsForProject(projectId, idsArray);
-
+        addManualBfridsForProject(projectId, normalized);
         try {
-            await sendManualBfridsToServer(projectId, idsArray);
+            await sendManualBfridsToServer(projectId, normalized);
         } catch (error) {
             console.error("[QGA] Ошибка при отправке bfrid в ручную чистку через API:", error);
+            alert("Ошибка при отправке в ручную чистку. Подробности в консоли.");
+            return;
         }
-
-        if (options && options.clearManualSelection) {
-            for (const checkbox of manualCheckboxesToClear) {
-                if (!(checkbox instanceof HTMLInputElement)) {
-                    continue;
-                }
-                if (!checkbox.checked) {
-                    continue;
-                }
-                checkbox.checked = false;
-                checkbox.dispatchEvent(
-                    new Event("change", {
-                        bubbles: true
-                    })
-                );
-            }
-        }
-
         console.info(
             "[QGA] Добавлено bfrid в буфер ручной чистки для проекта",
             projectId,
             "кол-во:",
-            collectedIds.size
+            normalized.length
         );
     }
 
@@ -2550,6 +2558,74 @@
         }
 
         return null;
+    }
+
+    /** ProjectId на странице редактирования проекта (/lk/Project/Edit/123). */
+    function getProjectIdFromEditPage() {
+        const path = (window.location.pathname || "").trim();
+        const match = path.match(/\/lk\/project\/edit\/([^/]+)/i);
+        return match && match[1] ? match[1] : null;
+    }
+
+    /** ID проекта для поиска сохранённых группировок: на странице проверки это ключ из localStorage (из URL Edit), а не ProjectId из формы. Ищем ссылку на /Project/Edit/ или путь. */
+    function getProjectIdForGroupsLookup() {
+        const path = (window.location.pathname || "").trim();
+        let match = path.match(/\/lk\/project\/edit\/([^/]+)/i);
+        if (match && match[1]) return match[1];
+        const link = document.querySelector('a[href*="/Project/Edit/"], a[href*="/project/edit/"]');
+        if (link && link.href) {
+            match = link.href.match(/\/project\/edit\/([^/?#]+)/i);
+            if (match && match[1]) return match[1];
+        }
+        return getProjectIdForVerify();
+    }
+
+    function loadOpenEndsGroups() {
+        try {
+            const raw = localStorage.getItem(OPENENDS_GROUPS_STORAGE_KEY);
+            if (!raw) return {};
+            const parsed = JSON.parse(raw);
+            return parsed && typeof parsed === "object" ? parsed : {};
+        } catch (e) {
+            return {};
+        }
+    }
+
+    function saveOpenEndsGroups(allProjectsGroups) {
+        try {
+            localStorage.setItem(OPENENDS_GROUPS_STORAGE_KEY, JSON.stringify(allProjectsGroups || {}));
+        } catch (e) {}
+    }
+
+    /** Собрать с текущей страницы (Project Edit #openEnds) список сгруппированных переменных из колонки «переменная» (Q1_1_other; Q1_2_other; …) и сохранить по projectId. */
+    function collectOpenEndsGroupsFromPage() {
+        if (!isOpenEndsHash()) return;
+        const projectId = getProjectIdFromEditPage();
+        if (!projectId) return;
+        const root = document.querySelector("#divOpenEnds");
+        if (!root) return;
+        const rows = root.querySelectorAll("#gridOpenEnds .k-grid-content tbody tr.k-master-row");
+        const variableSelector = state.settings.variableSelector || "td:nth-child(5)";
+        const groupByCode = {};
+        for (const row of rows) {
+            const cell = row.querySelector(variableSelector);
+            const text = (cell && (cell.textContent || cell.innerText || "").trim()) || "";
+            const parts = text.split(";").map((s) => s.trim()).filter(Boolean);
+            const codes = parts
+                .map((p) => {
+                    const m = p.match(/^(Q[0-9A-Za-z_.]+(_other)?)/);
+                    return m ? m[1] : "";
+                })
+                .filter(Boolean);
+            if (codes.length > 1) {
+                for (const code of codes) {
+                    groupByCode[code] = codes.slice();
+                }
+            }
+        }
+        const all = loadOpenEndsGroups();
+        all[projectId] = groupByCode;
+        saveOpenEndsGroups(all);
     }
 
     function loadManualBfridsState() {
@@ -3002,7 +3078,8 @@
             };
         }
 
-        const respondentIdByOpenEndId = new Map();
+        /** Один openEndId в выгрузке может соответствовать многим респондентам (один и тот же ответ у нескольких человек). */
+        const respondentIdsByOpenEndId = new Map();
         const answersByRespondentId = new Map();
         const respondentIdsByQuestionAndValue = new Map();
         const respondentIdsByValueOnly = new Map();
@@ -3045,7 +3122,20 @@
             }
 
             if (openEndId) {
-                respondentIdByOpenEndId.set(openEndId, respondentId);
+                if (!respondentIdsByOpenEndId.has(openEndId)) {
+                    respondentIdsByOpenEndId.set(openEndId, []);
+                }
+                respondentIdsByOpenEndId.get(openEndId).push(respondentId);
+            }
+
+            // Ключ только по полному коду переменной (Q1_1_other||значение). При сгруппированном вопросе поиск идёт по списку переменных из заголовка.
+            if (question && value) {
+                const fullKey = buildVerifyQuestionValueKey(question, value);
+                if (!respondentIdsByOpenEndId.has(fullKey)) {
+                    respondentIdsByOpenEndId.set(fullKey, []);
+                }
+                const fullArr = respondentIdsByOpenEndId.get(fullKey);
+                if (!fullArr.includes(respondentId)) fullArr.push(respondentId);
             }
 
             if (!answersByRespondentId.has(respondentId)) {
@@ -3059,11 +3149,11 @@
             });
 
             if (question && value) {
-                const key = buildVerifyQuestionValueKey(question, value);
-                if (!respondentIdsByQuestionAndValue.has(key)) {
-                    respondentIdsByQuestionAndValue.set(key, []);
+                const fullKey = buildVerifyQuestionValueKey(question, value);
+                if (!respondentIdsByQuestionAndValue.has(fullKey)) {
+                    respondentIdsByQuestionAndValue.set(fullKey, []);
                 }
-                respondentIdsByQuestionAndValue.get(key).push(respondentId);
+                respondentIdsByQuestionAndValue.get(fullKey).push(respondentId);
             }
 
             if (value) {
@@ -3077,7 +3167,7 @@
 
         return {
             ok: true,
-            respondentIdByOpenEndId,
+            respondentIdsByOpenEndId,
             answersByRespondentId,
             respondentIdsByQuestionAndValue,
             respondentIdsByValueOnly
@@ -3098,6 +3188,56 @@
             .trim();
     }
 
+    /** Список переменных группы для questionCode. Сначала из данных, собранных на странице Project Edit #openEnds (ключ — ID из URL Edit); иначе из заголовка на странице проверки. */
+    function getVerifyGroupedVariableCodes(questionCode) {
+        const code = String(questionCode || "").trim();
+        const projectKey = getProjectIdForGroupsLookup();
+        if (projectKey && code) {
+            const all = loadOpenEndsGroups();
+            const projectGroups = all[projectKey];
+            if (projectGroups && projectGroups[code] && Array.isArray(projectGroups[code]) && projectGroups[code].length > 1) {
+                return projectGroups[code];
+            }
+        }
+        const gridEl = document.querySelector("#grid, #gridOpenEnds");
+        let text = "";
+        if (gridEl) {
+            const prev = gridEl.previousElementSibling;
+            if (prev && prev.textContent) text = prev.textContent;
+            if (!text && gridEl.parentElement) {
+                const parentPrev = gridEl.parentElement.previousElementSibling;
+                if (parentPrev && parentPrev.textContent) text = parentPrev.textContent;
+            }
+            if (!text && gridEl.parentElement) {
+                const wrapper = gridEl.parentElement.closest("div");
+                if (wrapper && wrapper.previousElementSibling && wrapper.previousElementSibling.textContent) {
+                    text = wrapper.previousElementSibling.textContent;
+                }
+            }
+        }
+        const parts = text.split(";").map((s) => s.trim()).filter(Boolean);
+        const variableCodes = parts
+            .map((p) => {
+                const m = p.match(/^(Q[0-9A-Za-z_.]+(_other)?)/);
+                return m ? m[1] : "";
+            })
+            .filter(Boolean);
+        return variableCodes.length > 1 ? variableCodes : [];
+    }
+
+    /** Есть ли на странице список переменных через «;» (Q1_1_other; Q1_2_other; …) — тогда вопрос сгруппирован. */
+    function isVerifyQuestionGrouped(questionCode) {
+        const code = String(questionCode || "").trim();
+        if (!code) return false;
+        const variableCodes = getVerifyGroupedVariableCodes(code);
+        return variableCodes.length > 1 && variableCodes.includes(code);
+    }
+
+    /** Код вопроса для ключа: если не сгруппирован — целиком (Q1_3_other, Q13.1); при сгруппированном поиск идёт по списку переменных из заголовка. */
+    function getVerifyQuestionBaseCode(questionCode) {
+        return String(questionCode || "").trim();
+    }
+
     function getVerifyQuestionCode() {
         if (typeof state.verifyQuestionCode === "string" && state.verifyQuestionCode) {
             return state.verifyQuestionCode;
@@ -3116,7 +3256,7 @@
         }
 
         const combined = sources.join("\n");
-        const match = combined.match(/(Q[0-9A-Za-z_]+(?:_other)?)/);
+        const match = combined.match(/(Q[0-9A-Za-z_.]+(?:_other)?)/);
         if (match && match[1]) {
             candidate = match[1];
         }
@@ -3137,6 +3277,7 @@
                 </div>
                 <div class="qga-verify-modal__body">
                     <ul class="qga-verify-modal__list"></ul>
+                    <div class="qga-verify-modal__footer"></div>
                 </div>
             `;
 
@@ -3152,9 +3293,10 @@
 
         const titleNode = modal.querySelector(".qga-verify-modal__title");
         const listNode = modal.querySelector(".qga-verify-modal__list");
+        const footerNode = modal.querySelector(".qga-verify-modal__footer");
 
         if (titleNode) {
-            titleNode.textContent = `${respondentId}`;
+            titleNode.textContent = String(respondentId);
         }
 
         if (listNode) {
@@ -3183,6 +3325,30 @@
                     listNode.appendChild(item);
                 }
             }
+        }
+
+        if (footerNode) {
+            footerNode.innerHTML = "";
+            const manualCheckbox = document.createElement("input");
+            manualCheckbox.type = "checkbox";
+            manualCheckbox.className = "qga-verify-modal-manual-checkbox";
+            manualCheckbox.title = "Добавить в ручную чистку (по нажатию «Проверить страницу»)";
+            manualCheckbox.dataset.respondentId = String(respondentId);
+            manualCheckbox.checked = state.verifyPendingManualBfrids.has(String(respondentId));
+            manualCheckbox.addEventListener("change", () => {
+                const id = manualCheckbox.dataset.respondentId;
+                if (!id) return;
+                if (manualCheckbox.checked) {
+                    state.verifyPendingManualBfrids.add(id);
+                } else {
+                    state.verifyPendingManualBfrids.delete(id);
+                }
+            });
+            const manualLabel = document.createElement("label");
+            manualLabel.className = "qga-verify-modal__footer-label";
+            manualLabel.appendChild(manualCheckbox);
+            manualLabel.appendChild(document.createTextNode(" В ручную чистку"));
+            footerNode.appendChild(manualLabel);
         }
 
         modal.style.display = "flex";
@@ -3246,8 +3412,32 @@
 
                 const header = document.createElement("div");
                 header.className = "qga-verify-modal__q qga-verify-modal__respondent-header";
-                header.textContent = `${respondentId}`;
+                header.style.display = "flex";
+                header.style.alignItems = "center";
+                header.style.gap = "8px";
+                header.style.flexWrap = "wrap";
 
+                const manualCheckbox = document.createElement("input");
+                manualCheckbox.type = "checkbox";
+                manualCheckbox.className = "qga-verify-modal-manual-checkbox";
+                manualCheckbox.title = "Добавить в ручную чистку (по нажатию «Проверить страницу»)";
+                manualCheckbox.dataset.respondentId = String(respondentId);
+                manualCheckbox.checked = state.verifyPendingManualBfrids.has(String(respondentId));
+                manualCheckbox.addEventListener("change", () => {
+                    const id = manualCheckbox.dataset.respondentId;
+                    if (!id) return;
+                    if (manualCheckbox.checked) {
+                        state.verifyPendingManualBfrids.add(id);
+                    } else {
+                        state.verifyPendingManualBfrids.delete(id);
+                    }
+                });
+
+                const idSpan = document.createElement("span");
+                idSpan.textContent = `${respondentId}`;
+
+                header.appendChild(manualCheckbox);
+                header.appendChild(idSpan);
                 headerItem.appendChild(header);
 
                 if (!answers || answers.length === 0) {
@@ -3285,22 +3475,6 @@
             const lastHeaderCell =
                 headerCells[headerCells.length - 1] || headerRow.querySelector("th:last-child");
 
-            if (lastHeaderCell && !headerRow.querySelector(".qga-manual-header")) {
-                const manualHeader = document.createElement("th");
-                manualHeader.scope = "col";
-                manualHeader.role = "columnheader";
-                manualHeader.className = "k-header qga-manual-header";
-                manualHeader.style.textAlign = "center";
-                manualHeader.textContent = "Ручная";
-
-                const afterLast = lastHeaderCell.nextSibling;
-                if (afterLast) {
-                    headerRow.insertBefore(manualHeader, afterLast);
-                } else {
-                    headerRow.appendChild(manualHeader);
-                }
-            }
-
             if (!headerRow.querySelector(".qga-resp-header")) {
                 const respHeader = document.createElement("th");
                 respHeader.scope = "col";
@@ -3312,14 +3486,13 @@
                 headerRow.appendChild(respHeader);
             }
 
-            // Обновляем colgroup в шапке и в теле грида, чтобы добавить колонки
-            // «Ручная» и «Респ.» и немного сузить «Отложить».
+            // Обновляем colgroup: добавляем колонку «Другие ответы» и сужаем «Отложить».
             const updateColgroup = (root) => {
                 const colgroup = root ? root.querySelector("colgroup") : null;
                 if (!colgroup) {
                     return;
                 }
-                if (colgroup.querySelector("col.qga-manual-col") || colgroup.querySelector("col.qga-resp-col")) {
+                if (colgroup.querySelector("col.qga-resp-col")) {
                     return;
                 }
                 const cols = colgroup.querySelectorAll("col");
@@ -3327,13 +3500,6 @@
                     return;
                 }
                 const lastCol = cols[cols.length - 1];
-
-                // Оставляем последнюю колонку (штатное "Отложить") на месте,
-                // а "Ручная" и "Респ." добавляем справа от неё.
-                const manualCol = document.createElement("col");
-                manualCol.className = "qga-manual-col";
-                manualCol.style.width = "90px";
-                colgroup.appendChild(manualCol);
 
                 const respCol = document.createElement("col");
                 respCol.className = "qga-resp-col";
@@ -3364,25 +3530,7 @@
                 continue;
             }
 
-            // Вставляем колонку "Ручная" после штатной колонки "Отложить".
-            if (!row.querySelector("td.qga-manual-cell")) {
-                const manualCell = document.createElement("td");
-                manualCell.className = "qga-manual-cell";
-                manualCell.setAttribute("role", "gridcell");
-                manualCell.style.textAlign = "center";
-
-                const manualCheckbox = document.createElement("input");
-                manualCheckbox.type = "checkbox";
-                manualCheckbox.className = "k-checkbox qga-manual-checkbox";
-                manualCheckbox.title = "Добавить в ручную чистку";
-
-                manualCell.appendChild(manualCheckbox);
-
-                const afterLast = lastCell.nextSibling;
-                row.insertBefore(manualCell, afterLast || null);
-            }
-
-            // Добавляем отдельную колонку "Респ." после "Ручная".
+            // Добавляем колонку "Другие ответы" (кнопка «Посмотреть»).
             if (!row.querySelector("td.qga-resp-cell")) {
                 const respCell = document.createElement("td");
                 respCell.className = "qga-resp-cell qga-verify-cell";
@@ -3407,9 +3555,8 @@
                 wrap.appendChild(button);
                 respCell.appendChild(wrap);
 
-                const manualCell = row.querySelector("td.qga-manual-cell");
-                const afterManual = manualCell ? manualCell.nextSibling : null;
-                row.insertBefore(respCell, afterManual || null);
+                const afterLast = lastCell.nextSibling;
+                row.insertBefore(respCell, afterLast || null);
             }
 
             setupVerifyRowExclusiveCheckboxes(gridRoot, row);
@@ -3456,15 +3603,13 @@
             ? incorrectCell.querySelector("input[type='checkbox']")
             : null;
 
-        const manualCheckbox = row.querySelector("input.qga-manual-checkbox");
-
         const postponeCell =
             postponeIndex >= 0 && postponeIndex < cells.length ? cells[postponeIndex] : null;
         const postponeCheckbox = postponeCell
             ? postponeCell.querySelector("input[type='checkbox']")
             : null;
 
-        const group = [incorrectCheckbox, manualCheckbox, postponeCheckbox].filter(
+        const group = [incorrectCheckbox, postponeCheckbox].filter(
             (cb) => cb instanceof HTMLInputElement
         );
         if (group.length <= 1) {
@@ -3476,17 +3621,9 @@
                 return;
             }
             const isChecked = !!changed.checked;
-
-            if (isChecked && changed === manualCheckbox) {
-                row.classList.add("qga-manual-row");
-            } else if (!isChecked && changed === manualCheckbox) {
-                row.classList.remove("qga-manual-row");
-            }
-
             if (!isChecked) {
                 return;
             }
-
             for (const cb of group) {
                 if (cb === changed) {
                     continue;
@@ -3511,11 +3648,6 @@
                 continue;
             }
             cb.addEventListener("change", () => handleChange(cb));
-        }
-
-        // Инициализируем цвет строки, если "Ручная" уже была отмечена до навешивания обработчиков.
-        if (manualCheckbox && manualCheckbox.checked) {
-            row.classList.add("qga-manual-row");
         }
     }
 
