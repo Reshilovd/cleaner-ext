@@ -2310,8 +2310,12 @@
                 border-top: 1px solid #e5e7eb;
             }
             .qga-verify-modal__respondent-header {
+                position: sticky;
+                top: 0;
+                z-index: 1;
+                background: #fff;
                 font-weight: 600;
-                font-size: 12px;
+                font-size: 14px;
                 margin-bottom: 3px;
                 padding: 2px 0;
                 color: #111827;
@@ -3436,7 +3440,6 @@
                 const idSpan = document.createElement("span");
                 idSpan.textContent = `${respondentId}`;
 
-                header.appendChild(manualCheckbox);
                 header.appendChild(idSpan);
                 headerItem.appendChild(header);
 
@@ -3459,6 +3462,18 @@
                         headerItem.appendChild(text);
                     }
                 }
+
+                const manualRow = document.createElement("div");
+                manualRow.className = "qga-verify-modal__manual-row";
+                manualRow.style.marginTop = "8px";
+                manualRow.style.paddingTop = "8px";
+                manualRow.style.borderTop = "1px solid #e5e7eb";
+                manualRow.style.display = "flex";
+                manualRow.style.alignItems = "center";
+                manualRow.style.gap = "6px";
+                manualRow.appendChild(manualCheckbox);
+                manualRow.appendChild(document.createTextNode("В ручную чистку"));
+                headerItem.appendChild(manualRow);
 
                 listNode.appendChild(headerItem);
             }
