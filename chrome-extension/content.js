@@ -2138,29 +2138,29 @@
             }
             .qga-verify-modal {
                 position: fixed;
-                right: 16px;
-                bottom: 16px;
-                width: 380px;
-                max-height: 60vh;
+                right: 12px;
+                bottom: 12px;
+                width: 340px;
+                max-height: 65vh;
                 z-index: 2147483647;
-                background: #ffffff;
-                color: #111827;
-                border-radius: 10px;
-                box-shadow: 0 20px 40px rgba(0, 0, 0, 0.25);
-                border: 1px solid #d1d5db;
+                background: #fff;
+                color: #1f2937;
+                border-radius: 6px;
+                box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+                border: 1px solid #e5e7eb;
                 display: none;
                 flex-direction: column;
                 font: 12px/1.4 "Segoe UI", Tahoma, sans-serif;
                 overflow: hidden;
             }
             .qga-verify-modal__header {
-                padding: 8px 10px;
-                background: #111827;
+                padding: 5px 8px;
+                background: #1f2937;
                 color: #f9fafb;
                 display: flex;
                 align-items: center;
                 justify-content: space-between;
-                gap: 8px;
+                gap: 6px;
             }
             .qga-verify-modal__title {
                 font-size: 12px;
@@ -2171,14 +2171,15 @@
                 background: transparent;
                 color: #9ca3af;
                 cursor: pointer;
-                font-size: 14px;
-                padding: 0 4px;
+                font-size: 16px;
+                line-height: 1;
+                padding: 0 2px;
             }
             .qga-verify-modal__close:hover {
                 color: #e5e7eb;
             }
             .qga-verify-modal__body {
-                padding: 8px 10px;
+                padding: 6px 8px;
                 overflow: auto;
             }
             .qga-verify-modal__list {
@@ -2187,22 +2188,38 @@
                 padding: 0;
             }
             .qga-verify-modal__item {
-                border-bottom: 1px solid #e5e7eb;
-                padding: 6px 0;
+                padding: 2px 0;
             }
-            .qga-verify-modal__item:last-child {
-                border-bottom: none;
+            .qga-verify-modal__item:not(:first-child) {
+                margin-top: 6px;
+                padding-top: 6px;
+                border-top: 1px solid #e5e7eb;
+            }
+            .qga-verify-modal__respondent-header {
+                font-weight: 600;
+                font-size: 12px;
+                margin-bottom: 3px;
+                padding: 2px 0;
+                color: #111827;
             }
             .qga-verify-modal__q {
                 font-weight: 600;
                 font-size: 11px;
-                margin-bottom: 2px;
+                margin-bottom: 0;
+                color: #6b7280;
+            }
+            .qga-verify-modal__q.qga-verify-modal__respondent-header {
+                color: #111827;
             }
             .qga-verify-modal__text {
                 font-size: 11px;
                 color: #374151;
                 white-space: pre-wrap;
                 word-break: break-word;
+                margin-bottom: 2px;
+            }
+            .qga-verify-modal__item > .qga-verify-modal__text:last-child {
+                margin-bottom: 0;
             }
         `;
         document.documentElement.appendChild(style);
@@ -3065,7 +3082,7 @@
         const listNode = modal.querySelector(".qga-verify-modal__list");
 
         if (titleNode) {
-            titleNode.textContent = `Ответы респондента ${respondentId}`;
+            titleNode.textContent = `${respondentId}`;
         }
 
         if (listNode) {
@@ -3127,21 +3144,21 @@
         }
 
         const titleNode = modal.querySelector(".qga-verify-modal__title");
-        const hintNode = modal.querySelector(".qga-verify-modal__hint");
+        // const hintNode = modal.querySelector(".qga-verify-modal__hint");
         const listNode = modal.querySelector(".qga-verify-modal__list");
 
         if (titleNode) {
             titleNode.textContent = "Респонденты с данным ответом";
         }
 
-        if (hintNode) {
-            hintNode.textContent =
-                "Найдено несколько респондентов с таким же ответом в выгрузке. " +
-                "Ниже показаны все варианты, так как однозначно определить одного нельзя.";
-            hintNode.style.fontSize = "11px";
-            hintNode.style.color = "#4b5563";
-            hintNode.style.marginBottom = "6px";
-        }
+        // if (hintNode) {
+        //     hintNode.textContent =
+        //         "Найдено несколько респондентов с таким же ответом в выгрузке. " +
+        //         "Ниже показаны все варианты, так как однозначно определить одного нельзя.";
+        //     hintNode.style.fontSize = "11px";
+        //     hintNode.style.color = "#4b5563";
+        //     hintNode.style.marginBottom = "6px";
+        // }
 
         if (listNode) {
             listNode.innerHTML = "";
@@ -3156,8 +3173,8 @@
                 headerItem.className = "qga-verify-modal__item";
 
                 const header = document.createElement("div");
-                header.className = "qga-verify-modal__q";
-                header.textContent = `Респондент ${respondentId}`;
+                header.className = "qga-verify-modal__q qga-verify-modal__respondent-header";
+                header.textContent = `${respondentId}`;
 
                 headerItem.appendChild(header);
 
