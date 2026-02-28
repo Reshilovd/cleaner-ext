@@ -2116,18 +2116,23 @@
                 left: 50%;
                 top: 50%;
                 transform: translate(-50%, -50%);
-                border: 1px solid #cbd5e1;
-                border-radius: 4px;
-                padding: 1px 4px;
+                border: 1px solid #e2e8f0;
+                border-radius: 3px;
+                padding: 2px 6px;
                 margin: 0;
-                background: #e5e7eb;
-                color: #111827;
+                background: #f8fafc;
+                color: #475569;
                 cursor: pointer;
-                font-size: 9px;
+                font-size: 11px;
+                font-weight: normal;
                 white-space: nowrap;
+                box-shadow: none;
+                transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
             }
             .qga-verify-show-respondent:hover {
-                background: #dbeafe;
+                background: #f1f5f9;
+                border-color: #cbd5e1;
+                color: #334155;
             }
             .qga-verify-cell-wrap {
                 display: flex;
