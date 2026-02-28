@@ -149,6 +149,10 @@
         }
     }
 
+    function isOpenEndsHash() {
+        return (window.location.hash || "").toLowerCase() === "#openends";
+    }
+
     function initOpenEndsMode() {
         loadStoredState();
         injectStyles();
@@ -157,6 +161,11 @@
             buildPanel();
             hidePanel();
             setupManualPageIntegration();
+            window.addEventListener("hashchange", () => {
+                if (!isOpenEndsHash() && state.panel) {
+                    hidePanel();
+                }
+            });
         });
     }
 
@@ -333,6 +342,7 @@
         const host = (window.location.hostname || "").toLowerCase();
         const path = (window.location.pathname || "").toLowerCase();
 
+        // Режим OpenEnds на любой странице редактирования проекта; показ панели только при #openEnds
         if (host.endsWith("clr.env7.biz") && path.includes("/lk/project/edit/")) {
             return "openends";
         }
@@ -391,7 +401,7 @@
     }
 
     function showPanel() {
-        if (!state.panel) {
+        if (!state.panel || !isOpenEndsHash()) {
             return;
         }
         state.panel.style.display = "flex";
