@@ -2633,6 +2633,61 @@
         return current.map((x) => String(x).trim()).filter(Boolean);
     }
 
+    /**
+     * Синхронизирует локальное хранилище (manualApiState и manualBfridsState)
+     * с текущим содержимым поля ручной чистки (#Bfrids).
+     * Вызывается при ручном удалении/изменении айдишек в textarea.
+     */
+    function syncManualBfridsFromTextarea(projectId) {
+        if (!projectId) {
+            return;
+        }
+        const textarea = document.getElementById("Bfrids");
+        if (!textarea) {
+            return;
+        }
+        const raw = (textarea.value || "").trim();
+        const idsInTextarea = raw
+            .split(/[\s,;]+/)
+            .map((x) => String(x).trim())
+            .filter(Boolean);
+
+        const key = String(projectId);
+
+        const token = findVerificationTokenInDocument(document);
+        const prev =
+            manualApiState && typeof manualApiState[key] === "object" ? manualApiState[key] : {};
+        manualApiState[key] = {
+            token: token || prev.token || "",
+            bfrids: idsInTextarea.join("\n")
+        };
+        saveManualApiState(manualApiState);
+
+        const currentBuffer = Array.isArray(manualBfridsState[key]) ? manualBfridsState[key] : [];
+        if (currentBuffer.length > 0) {
+            const textareaSet = new Set(idsInTextarea);
+            const stillPresent = currentBuffer.filter((id) => textareaSet.has(String(id).trim()));
+            if (stillPresent.length === 0) {
+                delete manualBfridsState[key];
+            } else {
+                manualBfridsState[key] = stillPresent;
+            }
+            saveManualBfridsState(manualBfridsState);
+        }
+    }
+
+    function attachManualBfridsTextareaSync(projectId) {
+        const textarea = document.getElementById("Bfrids");
+        if (!textarea || !projectId || textarea.dataset.qgaBfridsSyncAttached === "1") {
+            return;
+        }
+        textarea.dataset.qgaBfridsSyncAttached = "1";
+        const sync = () => syncManualBfridsFromTextarea(projectId);
+        textarea.addEventListener("input", sync);
+        textarea.addEventListener("blur", sync);
+        textarea.addEventListener("change", sync);
+    }
+
     function setupManualPageIntegration() {
         const projectId = getProjectIdForVerify();
         if (!projectId) {
@@ -2660,6 +2715,7 @@
                     }
                 }, 0);
             });
+            attachManualBfridsTextareaSync(projectId);
         };
 
         attach();
@@ -2712,6 +2768,7 @@
         } catch (error) {
             console.warn("[QGA] Не удалось сохранить состояние API ручной чистки:", error);
         }
+        attachManualBfridsTextareaSync(projectId);
     }
 
     async function sendManualBfridsToServer(projectId, bfrids) {
