@@ -2296,6 +2296,23 @@
                 padding: 6px 8px;
                 overflow: auto;
             }
+            .qga-verify-modal--candidates .qga-verify-modal__body {
+                padding-top: 0;
+            }
+            .qga-verify-modal--candidates .qga-verify-modal__list {
+                margin-top: 0;
+                padding-top: 0;
+            }
+            .qga-verify-modal--candidates .qga-verify-modal__list .qga-verify-modal__item:first-child {
+                padding-top: 0;
+            }
+            .qga-verify-modal--candidates .qga-verify-modal__list .qga-verify-modal__item:first-child .qga-verify-modal__respondent-header {
+                padding-top: 0;
+                margin-top: 0;
+            }
+            .qga-verify-modal--candidates .qga-verify-modal__footer {
+                display: none;
+            }
             .qga-verify-modal__list {
                 list-style: none;
                 margin: 0;
@@ -2308,6 +2325,19 @@
                 margin-top: 6px;
                 padding-top: 6px;
                 border-top: 1px solid #e5e7eb;
+            }
+            .qga-verify-modal__item--in-manual {
+                background: #ecfdf5;
+                margin-left: -8px;
+                margin-right: -8px;
+                padding-left: 8px;
+                padding-right: 8px;
+                padding-top: 4px;
+                padding-bottom: 4px;
+                border-radius: 4px;
+            }
+            .qga-verify-modal__item--in-manual .qga-verify-modal__respondent-header {
+                background: #ecfdf5;
             }
             .qga-verify-modal__respondent-header {
                 position: sticky;
@@ -2351,6 +2381,10 @@
                 cursor: pointer;
                 font-size: 12px;
                 color: #374151;
+            }
+            .qga-verify-modal--in-manual .qga-verify-modal__body,
+            .qga-verify-modal--in-manual .qga-verify-modal__footer {
+                background: #ecfdf5;
             }
         `;
         document.documentElement.appendChild(style);
@@ -2711,6 +2745,29 @@
         delete manualBfridsState[key];
         saveManualBfridsState(manualBfridsState);
         return current.map((x) => String(x).trim()).filter(Boolean);
+    }
+
+    /** Множество ID респондентов, уже находящихся в ручной чистке по проекту (буфер + сохранённое поле Bfrids). */
+    function getManualBfridsSetForProject(projectId) {
+        const set = new Set();
+        if (!projectId) {
+            return set;
+        }
+        const key = String(projectId);
+        const fromBuffer = Array.isArray(manualBfridsState[key]) ? manualBfridsState[key] : [];
+        for (const id of fromBuffer) {
+            const n = String(id).trim();
+            if (n) set.add(n);
+        }
+        const apiEntry = manualApiState && manualApiState[key];
+        const bfridsStr = apiEntry && typeof apiEntry.bfrids === "string" ? apiEntry.bfrids : "";
+        if (bfridsStr) {
+            const fromApi = bfridsStr.split(/[\s,;]+/).map((x) => String(x).trim()).filter(Boolean);
+            for (const id of fromApi) {
+                set.add(id);
+            }
+        }
+        return set;
     }
 
     /**
@@ -3331,23 +3388,42 @@
             }
         }
 
+        manualBfridsState = loadManualBfridsState();
+        manualApiState = loadManualApiState();
+        const projectId = getProjectIdForVerify();
+        const alreadyInManualSet = getManualBfridsSetForProject(projectId);
+        const respondentIdStr = String(respondentId).trim();
+        const isAlreadyInManual = alreadyInManualSet.has(respondentIdStr);
+
+        modal.classList.remove("qga-verify-modal--candidates");
+        if (isAlreadyInManual) {
+            modal.classList.add("qga-verify-modal--in-manual");
+        } else {
+            modal.classList.remove("qga-verify-modal--in-manual");
+        }
+
         if (footerNode) {
             footerNode.innerHTML = "";
             const manualCheckbox = document.createElement("input");
             manualCheckbox.type = "checkbox";
             manualCheckbox.className = "qga-verify-modal-manual-checkbox";
-            manualCheckbox.title = "Добавить в ручную чистку (по нажатию «Проверить страницу»)";
-            manualCheckbox.dataset.respondentId = String(respondentId);
-            manualCheckbox.checked = state.verifyPendingManualBfrids.has(String(respondentId));
-            manualCheckbox.addEventListener("change", () => {
-                const id = manualCheckbox.dataset.respondentId;
-                if (!id) return;
-                if (manualCheckbox.checked) {
-                    state.verifyPendingManualBfrids.add(id);
-                } else {
-                    state.verifyPendingManualBfrids.delete(id);
-                }
-            });
+            manualCheckbox.title = isAlreadyInManual
+                ? "Уже в ручной чистке"
+                : "Добавить в ручную чистку (по нажатию «Проверить страницу»)";
+            manualCheckbox.dataset.respondentId = respondentIdStr;
+            manualCheckbox.checked = isAlreadyInManual || state.verifyPendingManualBfrids.has(respondentIdStr);
+            manualCheckbox.disabled = isAlreadyInManual;
+            if (!isAlreadyInManual) {
+                manualCheckbox.addEventListener("change", () => {
+                    const id = manualCheckbox.dataset.respondentId;
+                    if (!id) return;
+                    if (manualCheckbox.checked) {
+                        state.verifyPendingManualBfrids.add(id);
+                    } else {
+                        state.verifyPendingManualBfrids.delete(id);
+                    }
+                });
+            }
             const manualLabel = document.createElement("label");
             manualLabel.className = "qga-verify-modal__footer-label";
             manualLabel.appendChild(manualCheckbox);
@@ -3370,7 +3446,6 @@
                     <button type="button" class="qga-verify-modal__close" aria-label="Закрыть">×</button>
                 </div>
                 <div class="qga-verify-modal__body">
-                    <div class="qga-verify-modal__hint"></div>
                     <ul class="qga-verify-modal__list"></ul>
                 </div>
             `;
@@ -3385,25 +3460,25 @@
             document.documentElement.appendChild(modal);
         }
 
+        modal.classList.remove("qga-verify-modal--in-manual");
+        modal.classList.add("qga-verify-modal--candidates");
+
         const titleNode = modal.querySelector(".qga-verify-modal__title");
-        // const hintNode = modal.querySelector(".qga-verify-modal__hint");
+        const bodyNode = modal.querySelector(".qga-verify-modal__body");
+        if (bodyNode) {
+            bodyNode.innerHTML = "<ul class=\"qga-verify-modal__list\"></ul>";
+        }
         const listNode = modal.querySelector(".qga-verify-modal__list");
 
         if (titleNode) {
             titleNode.textContent = "Респонденты с данным ответом";
         }
 
-        // if (hintNode) {
-        //     hintNode.textContent =
-        //         "Найдено несколько респондентов с таким же ответом в выгрузке. " +
-        //         "Ниже показаны все варианты, так как однозначно определить одного нельзя.";
-        //     hintNode.style.fontSize = "11px";
-        //     hintNode.style.color = "#4b5563";
-        //     hintNode.style.marginBottom = "6px";
-        // }
-
         if (listNode) {
-            listNode.innerHTML = "";
+            manualBfridsState = loadManualBfridsState();
+            manualApiState = loadManualApiState();
+            const projectId = getProjectIdForVerify();
+            const alreadyInManualSet = getManualBfridsSetForProject(projectId);
 
             for (const respondentId of respondentIds) {
                 const answers =
@@ -3411,8 +3486,14 @@
                     answersMap.get(String(respondentId).trim()) ||
                     [];
 
+                const respondentIdStr = String(respondentId).trim();
+                const isAlreadyInManual = alreadyInManualSet.has(respondentIdStr);
+
                 const headerItem = document.createElement("li");
                 headerItem.className = "qga-verify-modal__item";
+                if (isAlreadyInManual) {
+                    headerItem.classList.add("qga-verify-modal__item--in-manual");
+                }
 
                 const header = document.createElement("div");
                 header.className = "qga-verify-modal__q qga-verify-modal__respondent-header";
@@ -3424,18 +3505,23 @@
                 const manualCheckbox = document.createElement("input");
                 manualCheckbox.type = "checkbox";
                 manualCheckbox.className = "qga-verify-modal-manual-checkbox";
-                manualCheckbox.title = "Добавить в ручную чистку (по нажатию «Проверить страницу»)";
-                manualCheckbox.dataset.respondentId = String(respondentId);
-                manualCheckbox.checked = state.verifyPendingManualBfrids.has(String(respondentId));
-                manualCheckbox.addEventListener("change", () => {
-                    const id = manualCheckbox.dataset.respondentId;
-                    if (!id) return;
-                    if (manualCheckbox.checked) {
-                        state.verifyPendingManualBfrids.add(id);
-                    } else {
-                        state.verifyPendingManualBfrids.delete(id);
-                    }
-                });
+                manualCheckbox.title = isAlreadyInManual
+                    ? "Уже в ручной чистке"
+                    : "Добавить в ручную чистку (по нажатию «Проверить страницу»)";
+                manualCheckbox.dataset.respondentId = respondentIdStr;
+                manualCheckbox.checked = isAlreadyInManual || state.verifyPendingManualBfrids.has(respondentIdStr);
+                manualCheckbox.disabled = isAlreadyInManual;
+                if (!isAlreadyInManual) {
+                    manualCheckbox.addEventListener("change", () => {
+                        const id = manualCheckbox.dataset.respondentId;
+                        if (!id) return;
+                        if (manualCheckbox.checked) {
+                            state.verifyPendingManualBfrids.add(id);
+                        } else {
+                            state.verifyPendingManualBfrids.delete(id);
+                        }
+                    });
+                }
 
                 const idSpan = document.createElement("span");
                 idSpan.textContent = `${respondentId}`;
