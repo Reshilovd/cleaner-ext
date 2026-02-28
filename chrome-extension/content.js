@@ -316,6 +316,46 @@
         } else {
             parent.appendChild(extraButton);
         }
+
+        const global = window;
+        const originalVerifyValues =
+            typeof global.verifyValues === "function" ? global.verifyValues : null;
+        if (originalVerifyValues && !originalVerifyValues.__qgaManualClearPatched) {
+            const patchedVerifyValues = function patchedVerifyValues(...args) {
+                try {
+                    const gridRoot = document.querySelector("#grid, #gridOpenEnds");
+                    if (gridRoot) {
+                        const manualCheckboxes = gridRoot.querySelectorAll(
+                            "tr.k-master-row .qga-manual-checkbox"
+                        );
+                        for (const cb of manualCheckboxes) {
+                            if (!(cb instanceof HTMLInputElement)) {
+                                continue;
+                            }
+                            if (!cb.checked) {
+                                continue;
+                            }
+                            cb.checked = false;
+                            cb.dispatchEvent(
+                                new Event("change", {
+                                    bubbles: true
+                                })
+                            );
+                        }
+                    }
+                } catch (error) {
+                    console.error(
+                        "[QGA] Ошибка при очистке чекбоксов 'Ручная' перед verifyValues():",
+                        error
+                    );
+                }
+
+                return originalVerifyValues.apply(this, args);
+            };
+
+            patchedVerifyValues.__qgaManualClearPatched = true;
+            global.verifyValues = patchedVerifyValues;
+        }
     }
 
     function detectPageKind() {
@@ -2279,6 +2319,24 @@
         };
     }
 
+    function buildVerifyRowKey(context) {
+        if (!context) {
+            return null;
+        }
+        const idPart =
+            context.openEndId != null && context.openEndId !== ""
+                ? String(context.openEndId).trim()
+                : "";
+        const valuePart =
+            context.valueText && context.valueText !== ""
+                ? String(context.valueText).trim().toLowerCase()
+                : "";
+        if (!idPart && !valuePart) {
+            return null;
+        }
+        return idPart + "||" + valuePart;
+    }
+
     async function ensureVerifyRespondentIndexLoaded() {
         if (state.verifyRespondentIndexLoaded) {
             return true;
@@ -2335,7 +2393,7 @@
         }
     }
 
-    async function handleVerifyMainManualBfrids() {
+    async function handleVerifyMainManualBfrids(options) {
         const gridRoot = document.querySelector("#grid, #gridOpenEnds");
         if (!gridRoot) {
             return;
@@ -2352,6 +2410,7 @@
         }
 
         const rowsToProcess = [];
+        const manualCheckboxesToClear = [];
         for (const checkbox of manualCheckboxes) {
             if (!(checkbox instanceof HTMLInputElement)) {
                 continue;
@@ -2362,6 +2421,7 @@
             const row = checkbox.closest("tr.k-master-row");
             if (row) {
                 rowsToProcess.push(row);
+                manualCheckboxesToClear.push(checkbox);
             }
         }
 
@@ -2445,6 +2505,23 @@
             await sendManualBfridsToServer(projectId, idsArray);
         } catch (error) {
             console.error("[QGA] Ошибка при отправке bfrid в ручную чистку через API:", error);
+        }
+
+        if (options && options.clearManualSelection) {
+            for (const checkbox of manualCheckboxesToClear) {
+                if (!(checkbox instanceof HTMLInputElement)) {
+                    continue;
+                }
+                if (!checkbox.checked) {
+                    continue;
+                }
+                checkbox.checked = false;
+                checkbox.dispatchEvent(
+                    new Event("change", {
+                        bubbles: true
+                    })
+                );
+            }
         }
 
         console.info(
@@ -3153,10 +3230,15 @@
                 manualHeader.style.textAlign = "center";
                 manualHeader.textContent = "Ручная";
 
-                headerRow.insertBefore(manualHeader, lastHeaderCell);
+                const afterLast = lastHeaderCell.nextSibling;
+                if (afterLast) {
+                    headerRow.insertBefore(manualHeader, afterLast);
+                } else {
+                    headerRow.appendChild(manualHeader);
+                }
             }
 
-            if (lastHeaderCell && !headerRow.querySelector(".qga-resp-header")) {
+            if (!headerRow.querySelector(".qga-resp-header")) {
                 const respHeader = document.createElement("th");
                 respHeader.scope = "col";
                 respHeader.role = "columnheader";
@@ -3164,8 +3246,7 @@
                 respHeader.style.textAlign = "center";
                 respHeader.textContent = "Другие ответы";
 
-                const next = lastHeaderCell.nextSibling;
-                headerRow.insertBefore(respHeader, next || null);
+                headerRow.appendChild(respHeader);
             }
 
             // Обновляем colgroup в шапке и в теле грида, чтобы добавить колонки
@@ -3184,10 +3265,12 @@
                 }
                 const lastCol = cols[cols.length - 1];
 
+                // Оставляем последнюю колонку (штатное "Отложить") на месте,
+                // а "Ручная" и "Респ." добавляем справа от неё.
                 const manualCol = document.createElement("col");
                 manualCol.className = "qga-manual-col";
                 manualCol.style.width = "90px";
-                colgroup.insertBefore(manualCol, lastCol);
+                colgroup.appendChild(manualCol);
 
                 const respCol = document.createElement("col");
                 respCol.className = "qga-resp-col";
@@ -3218,7 +3301,7 @@
                 continue;
             }
 
-            // Вставляем колонку "Ручная" перед колонкой "Отложить".
+            // Вставляем колонку "Ручная" после штатной колонки "Отложить".
             if (!row.querySelector("td.qga-manual-cell")) {
                 const manualCell = document.createElement("td");
                 manualCell.className = "qga-manual-cell";
@@ -3231,10 +3314,12 @@
                 manualCheckbox.title = "Добавить в ручную чистку";
 
                 manualCell.appendChild(manualCheckbox);
-                row.insertBefore(manualCell, lastCell);
+
+                const afterLast = lastCell.nextSibling;
+                row.insertBefore(manualCell, afterLast || null);
             }
 
-            // Добавляем отдельную колонку "Респ." после "Отложить".
+            // Добавляем отдельную колонку "Респ." после "Ручная".
             if (!row.querySelector("td.qga-resp-cell")) {
                 const respCell = document.createElement("td");
                 respCell.className = "qga-resp-cell qga-verify-cell";
@@ -3259,8 +3344,9 @@
                 wrap.appendChild(button);
                 respCell.appendChild(wrap);
 
-                const next = lastCell.nextSibling;
-                row.insertBefore(respCell, next || null);
+                const manualCell = row.querySelector("td.qga-manual-cell");
+                const afterManual = manualCell ? manualCell.nextSibling : null;
+                row.insertBefore(respCell, afterManual || null);
             }
 
             setupVerifyRowExclusiveCheckboxes(gridRoot, row);
