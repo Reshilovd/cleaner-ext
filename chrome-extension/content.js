@@ -23,6 +23,8 @@
     const CLEANER_AUTO_FILL_QUERY_KEY = "qga_autofill";
     const MANUAL_BFRIDS_STORAGE_KEY = "__qga_manual_bfrids_v1__";
     const MANUAL_API_STATE_STORAGE_KEY = "__qga_manual_api_state_v1__";
+    const RATING_INCORRECT_IDS_STORAGE_KEY = "__qga_rating_incorrect_ids_v1__";
+    const VERIFY_INCORRECT_IDS_STORAGE_KEY = "__qga_verify_incorrect_ids_v1__";
     const OPENENDS_GROUPS_STORAGE_KEY = "__qga_openends_groups_v1__";
     const PAGE_KIND = detectPageKind();
 
@@ -128,6 +130,8 @@
 
     let manualBfridsState = loadManualBfridsState();
     let manualApiState = loadManualApiState();
+    let ratingIncorrectIdsState = loadRatingIncorrectIdsState();
+    let verifyIncorrectIdsState = loadVerifyIncorrectIdsState();
 
     init();
 
@@ -366,6 +370,8 @@
                     }
 
                     const uniqueIds = Array.from(new Set(respondentIds.map((id) => String(id))));
+                    applyVerifyRowVisibility(gridRoot);
+                    const rowState = getVerifyRowIncorrectPostpone(gridRoot, row);
 
                     if (uniqueIds.length === 1) {
                         const respondentId = uniqueIds[0];
@@ -374,9 +380,9 @@
                             answersMap.get(String(respondentId).trim()) ||
                             [];
 
-                        showVerifyRespondentModal(respondentId, answers, context);
+                        showVerifyRespondentModal(respondentId, answers, context, rowState);
                     } else {
-                        showVerifyRespondentCandidates(uniqueIds, answersMap, context);
+                        showVerifyRespondentCandidates(uniqueIds, answersMap, context, rowState);
                     }
                 } catch (error) {
                     console.error("[QGA] Ошибка при загрузке ответов респондента", error);
@@ -391,6 +397,16 @@
             decorateVerifyRows(gridRoot);
         });
         observer.observe(gridRoot, { childList: true, subtree: true });
+
+        // Загрузить индекс и рейтинг (некорректные ID из Excel «Рейтинг», ReasonCodes=1) при открытии страницы
+        const projectId = getProjectIdForVerify();
+        Promise.all([
+            ensureVerifyRespondentIndexLoaded(),
+            projectId ? ensureRatingIncorrectIdsLoaded(projectId) : Promise.resolve(false)
+        ]).then(([indexOk]) => {
+            if (indexOk) applyVerifyRowVisibility(gridRoot);
+            else applyVerifyRowVisibility(gridRoot);
+        });
     }
 
     function setupVerifyMainManualIntegration() {
@@ -422,7 +438,15 @@
                     console.error("[QGA] Ошибка при отправке выбранных в ручную чистку:", error);
                 }
             }
+            collectVerifyIncorrectIdsAndSave();
             try {
+                const gridRoot = document.querySelector("#grid, #gridOpenEnds");
+                if (gridRoot && window.jQuery) {
+                    const grid = window.jQuery(gridRoot).data("kendoGrid");
+                    if (grid && typeof grid.one === "function") {
+                        grid.one("dataBound", () => applyVerifyRowVisibility(gridRoot));
+                    }
+                }
                 button.click();
             } catch (error) {
                 console.error("[QGA] Не удалось запустить стандартную проверку страницы:", error);
@@ -2386,6 +2410,34 @@
             .qga-verify-modal--in-manual .qga-verify-modal__footer {
                 background: #ecfdf5;
             }
+            .qga-verify-row-hidden {
+                visibility: collapse !important;
+                height: 0 !important;
+                overflow: hidden !important;
+            }
+            .qga-verify-modal__item--incorrect .qga-verify-modal__respondent-header,
+            .qga-verify-modal__item--incorrect {
+                background-color: #fef2f2 !important;
+            }
+            .qga-verify-modal__item--incorrect .qga-verify-modal__respondent-header {
+                color: #b91c1c !important;
+            }
+            .qga-verify-modal__item--in-manual .qga-verify-modal__respondent-header,
+            .qga-verify-modal__item--in-manual {
+                background: #fefce8 !important;
+            }
+            .qga-verify-modal__item--in-manual .qga-verify-modal__respondent-header {
+                color: #854d0e !important;
+            }
+            .qga-verify-question-highlight-incorrect {
+                background-color: #fef2f2 !important;
+                outline: 2px solid #f87171 !important;
+                outline-offset: 2px !important;
+            }
+            .qga-verify-modal--row-incorrect .qga-verify-modal__body,
+            .qga-verify-modal--row-incorrect .qga-verify-modal__footer {
+                background-color: #fef2f2 !important;
+            }
         `;
         document.documentElement.appendChild(style);
     }
@@ -2488,6 +2540,147 @@
             return null;
         }
         return idPart + "||" + valuePart;
+    }
+
+    /** Возвращает число N (кол-во ID по ответу) из первой ячейки строки или null. */
+    function getVerifyRowN(gridRoot, row) {
+        if (!gridRoot || !row) return null;
+        const headerRow = gridRoot.querySelector(".k-grid-header thead tr[role='row']");
+        const headerCells = headerRow ? headerRow.querySelectorAll("th[role='columnheader']") : null;
+        const firstHeaderText = headerCells && headerCells.length
+            ? (headerCells[0].textContent || "").trim().toLowerCase()
+            : "";
+        const cells = row.querySelectorAll("td[role='gridcell']");
+        if (!cells.length) return null;
+        const firstCell = cells[0];
+        const text = (firstCell.textContent || "").trim();
+        const num = parseInt(text, 10);
+        if (firstHeaderText === "n" || /^\d+$/.test(text)) {
+            return Number.isFinite(num) ? num : null;
+        }
+        return Number.isFinite(num) ? num : null;
+    }
+
+    /** Возвращает { incorrect, postpone } по чекбоксам строки. */
+    function getVerifyRowIncorrectPostpone(gridRoot, row) {
+        const out = { incorrect: false, postpone: false };
+        if (!gridRoot || !row || !(row instanceof HTMLTableRowElement)) return out;
+        const headerRow = gridRoot.querySelector(".k-grid-header thead tr[role='row']");
+        const headerCells = headerRow ? headerRow.querySelectorAll("th[role='columnheader']") : null;
+        let incorrectIndex = -1;
+        let postponeIndex = -1;
+        if (headerCells && headerCells.length) {
+            for (let i = 0; i < headerCells.length; i += 1) {
+                const text = (headerCells[i].textContent || "").trim().toLowerCase();
+                if (incorrectIndex === -1 && text.includes("некоррект")) incorrectIndex = i;
+                if (postponeIndex === -1 && text.includes("отлож")) postponeIndex = i;
+            }
+        }
+        const cells = row.querySelectorAll("td[role='gridcell']");
+        const incorrectCell = incorrectIndex >= 0 && incorrectIndex < cells.length ? cells[incorrectIndex] : null;
+        const postponeCell = postponeIndex >= 0 && postponeIndex < cells.length ? cells[postponeIndex] : null;
+        const incorrectCheckbox = incorrectCell ? incorrectCell.querySelector("input[type='checkbox']") : null;
+        const postponeCheckbox = postponeCell ? postponeCell.querySelector("input[type='checkbox']") : null;
+        out.incorrect = !!(incorrectCheckbox && incorrectCheckbox.checked);
+        out.postpone = !!(postponeCheckbox && postponeCheckbox.checked);
+        return out;
+    }
+
+    /** Возвращает массив respondent IDs для строки по индексу (или пустой массив). */
+    function getRespondentIdsForVerifyRow(row) {
+        const context = resolveVerifyRowContext(row);
+        if (!context || (!context.openEndId && !context.valueText)) return [];
+        const respondentIdsByOpenEndId = state.verifyRespondentIdsByOpenEndId;
+        const idsByQuestionAndValue = state.verifyRespondentIdsByQuestionAndValue;
+        const idsByValueOnly = state.verifyRespondentIdsByValueOnly;
+        if (!respondentIdsByOpenEndId && !idsByQuestionAndValue && !idsByValueOnly) return [];
+        let respondentIds = [];
+        if (respondentIdsByOpenEndId && respondentIdsByOpenEndId.size > 0) {
+            if (context.openEndId != null) {
+                const key = String(context.openEndId).trim();
+                const idsFromMap = respondentIdsByOpenEndId.get(key) || respondentIdsByOpenEndId.get(String(context.openEndId)) || [];
+                if (Array.isArray(idsFromMap) && idsFromMap.length > 0) respondentIds = idsFromMap.slice();
+            }
+            if (respondentIds.length === 0) {
+                const questionCode = getVerifyQuestionCode();
+                const valueText = context.valueText || "";
+                if (questionCode && valueText) {
+                    const groupedCodes = getVerifyGroupedVariableCodes(questionCode);
+                    if (groupedCodes.length > 1) {
+                        const collected = new Set();
+                        for (const code of groupedCodes) {
+                            const key = buildVerifyQuestionValueKey(code, valueText);
+                            const arr = respondentIdsByOpenEndId.get(key) || [];
+                            if (Array.isArray(arr)) arr.forEach((id) => collected.add(String(id)));
+                        }
+                        if (collected.size > 0) respondentIds = Array.from(collected);
+                    }
+                    const singleCode = getVerifyQuestionBaseCode(questionCode);
+                    if (respondentIds.length === 0) {
+                        const compositeKey = buildVerifyQuestionValueKey(singleCode, valueText);
+                        const fromMap = respondentIdsByOpenEndId.get(compositeKey);
+                        if (Array.isArray(fromMap) && fromMap.length > 0) respondentIds = fromMap.slice();
+                    }
+                    if (respondentIds.length === 0) {
+                        const altKey = buildVerifyQuestionValueKey(singleCode.replace(/\./g, "_"), valueText);
+                        const fromAlt = respondentIdsByOpenEndId.get(altKey);
+                        if (Array.isArray(fromAlt) && fromAlt.length > 0) respondentIds = fromAlt.slice();
+                    }
+                    if (respondentIds.length === 0) {
+                        const altKey2 = buildVerifyQuestionValueKey(singleCode.replace(/_/g, "."), valueText);
+                        const fromAlt2 = respondentIdsByOpenEndId.get(altKey2);
+                        if (Array.isArray(fromAlt2) && fromAlt2.length > 0) respondentIds = fromAlt2.slice();
+                    }
+                }
+            }
+        }
+        if (respondentIds.length === 0 && idsByQuestionAndValue) {
+            const questionCode = getVerifyQuestionCode();
+            const valueText = context.valueText || "";
+            if (questionCode && valueText) {
+                const singleCode = getVerifyQuestionBaseCode(questionCode);
+                const key = buildVerifyQuestionValueKey(singleCode, valueText);
+                const fromIndex = idsByQuestionAndValue.get(key);
+                if (Array.isArray(fromIndex) && fromIndex.length > 0) respondentIds = fromIndex.slice();
+            }
+        }
+        if (respondentIds.length === 0 && idsByValueOnly && context.valueText) {
+            const key = buildVerifyValueOnlyKey(context.valueText);
+            const fromIndex = idsByValueOnly.get(key);
+            if (Array.isArray(fromIndex) && fromIndex.length > 0) respondentIds = fromIndex.slice();
+        }
+        return Array.from(new Set(respondentIds.map((id) => String(id))));
+    }
+
+    /** Скрывает строки, где N=1 и (ID помечен некорректным локально или в рейтинге, или в ручной чистке). */
+    function applyVerifyRowVisibility(gridRoot) {
+        if (!gridRoot) return;
+        const projectId = getProjectIdForVerify();
+        const alreadyInManualSet = projectId ? getManualBfridsSetForProject(projectId) : new Set();
+        const verifyIncorrectSet = projectId ? getVerifyIncorrectIdsSetForProject(projectId) : new Set();
+        const ratingIncorrectSet = projectId ? getRatingIncorrectIdsSetForProject(projectId) : new Set();
+        const rows = gridRoot.querySelectorAll("tr.k-master-row");
+        for (const row of rows) {
+            if (!(row instanceof HTMLTableRowElement)) continue;
+            const n = getVerifyRowN(gridRoot, row);
+            if (n !== 1) {
+                row.classList.remove("qga-verify-row-hidden");
+                continue;
+            }
+            let shouldHide = false;
+            if (state.verifyRespondentIndexLoaded) {
+                const ids = getRespondentIdsForVerifyRow(row);
+                if (ids.length === 1) {
+                    const id = ids[0];
+                    shouldHide = verifyIncorrectSet.has(id) || ratingIncorrectSet.has(id) || alreadyInManualSet.has(id);
+                }
+            }
+            if (shouldHide) {
+                row.classList.add("qga-verify-row-hidden");
+            } else {
+                row.classList.remove("qga-verify-row-hidden");
+            }
+        }
     }
 
     async function ensureVerifyRespondentIndexLoaded() {
@@ -2714,6 +2907,82 @@
         } catch (error) {
             console.warn("[QGA] Не удалось сохранить состояние API ручной чистки в localStorage:", error);
         }
+    }
+
+    function loadRatingIncorrectIdsState() {
+        try {
+            const raw = localStorage.getItem(RATING_INCORRECT_IDS_STORAGE_KEY);
+            if (!raw) return {};
+            const parsed = JSON.parse(raw);
+            return parsed && typeof parsed === "object" ? parsed : {};
+        } catch (error) {
+            console.warn("[QGA] Не удалось прочитать рейтинг некорректных ID из localStorage:", error);
+            return {};
+        }
+    }
+
+    function saveRatingIncorrectIdsState(stateObject) {
+        try {
+            localStorage.setItem(RATING_INCORRECT_IDS_STORAGE_KEY, JSON.stringify(stateObject || {}));
+        } catch (error) {
+            console.warn("[QGA] Не удалось сохранить рейтинг некорректных ID в localStorage:", error);
+        }
+    }
+
+    function loadVerifyIncorrectIdsState() {
+        try {
+            const raw = localStorage.getItem(VERIFY_INCORRECT_IDS_STORAGE_KEY);
+            if (!raw) return {};
+            const parsed = JSON.parse(raw);
+            return parsed && typeof parsed === "object" ? parsed : {};
+        } catch (error) {
+            console.warn("[QGA] Не удалось прочитать локальные некорректные ID из localStorage:", error);
+            return {};
+        }
+    }
+
+    function saveVerifyIncorrectIdsState(stateObject) {
+        try {
+            localStorage.setItem(VERIFY_INCORRECT_IDS_STORAGE_KEY, JSON.stringify(stateObject || {}));
+        } catch (error) {
+            console.warn("[QGA] Не удалось сохранить локальные некорректные ID в localStorage:", error);
+        }
+    }
+
+    /** Множество ID, помеченных как некорректные (чекбокс + «Проверить страницу») по проекту. */
+    function getVerifyIncorrectIdsSetForProject(projectId) {
+        const set = new Set();
+        if (!projectId) return set;
+        const key = String(projectId);
+        const arr = Array.isArray(verifyIncorrectIdsState[key]) ? verifyIncorrectIdsState[key] : [];
+        arr.forEach((t) => {
+            const s = String(t).trim();
+            if (s) set.add(s);
+        });
+        return set;
+    }
+
+    /** Собирает ID со строк, где отмечен чекбокс «Некорректный», и сохраняет в локальное хранилище (вызывается перед verifyValues()). */
+    function collectVerifyIncorrectIdsAndSave() {
+        const projectId = getProjectIdForVerify();
+        const gridRoot = document.querySelector("#grid, #gridOpenEnds");
+        if (!projectId || !gridRoot || !state.verifyRespondentIndexLoaded) return;
+        const rows = gridRoot.querySelectorAll("tr.k-master-row");
+        const collected = new Set();
+        for (const row of rows) {
+            if (!(row instanceof HTMLTableRowElement)) continue;
+            const { incorrect } = getVerifyRowIncorrectPostpone(gridRoot, row);
+            if (!incorrect) continue;
+            const ids = getRespondentIdsForVerifyRow(row);
+            ids.forEach((id) => collected.add(String(id).trim()));
+        }
+        if (collected.size === 0) return;
+        const key = String(projectId);
+        const existing = Array.isArray(verifyIncorrectIdsState[key]) ? verifyIncorrectIdsState[key] : [];
+        const merged = new Set([...existing.map((x) => String(x).trim()), ...collected].filter(Boolean));
+        verifyIncorrectIdsState[key] = Array.from(merged);
+        saveVerifyIncorrectIdsState(verifyIncorrectIdsState);
+        console.info("[QGA] Локально сохранены некорректные ID (Проверить страницу), добавлено:", collected.size, "всего:", merged.size);
     }
 
     function addManualBfridsForProject(projectId, bfrids) {
@@ -3235,6 +3504,107 @@
         };
     }
 
+    /**
+     * Парсит Excel рейтинга (кнопка «Рейтинг»): колонки Token, ReasonCodes.
+     * Некорректные ID — строки с ReasonCodes === 1.
+     * Возвращает { ok: true, incorrectTokens: string[] } или { ok: false, error }.
+     */
+    function parseRatingXlsx(arrayBuffer) {
+        if (!(arrayBuffer instanceof ArrayBuffer)) {
+            return { ok: false, error: "Неверный формат данных (ожидался ArrayBuffer)." };
+        }
+        if (typeof XLSX === "undefined" || typeof XLSX.read !== "function") {
+            return { ok: false, error: "Библиотека XLSX недоступна." };
+        }
+        let workbook;
+        try {
+            workbook = XLSX.read(arrayBuffer, { type: "array" });
+        } catch (error) {
+            console.warn("[QGA] Ошибка XLSX.read при разборе рейтинга:", error);
+            return { ok: false, error: "Не удалось прочитать XLSX рейтинга." };
+        }
+        if (!workbook || !workbook.SheetNames || workbook.SheetNames.length === 0) {
+            return { ok: false, error: "Файл рейтинга пуст или некорректен." };
+        }
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        if (!sheet) return { ok: false, error: "Лист не найден." };
+        let rows;
+        try {
+            rows = XLSX.utils.sheet_to_json(sheet, { header: 1, blankrows: false });
+        } catch (error) {
+            return { ok: false, error: "Не удалось преобразовать лист рейтинга в данные." };
+        }
+        if (!Array.isArray(rows) || rows.length < 2) {
+            return { ok: true, incorrectTokens: [] };
+        }
+        const headerCells = rows[0].map((cell) => String(cell || "").trim());
+        const headerLower = headerCells.map((h) => h.toLowerCase());
+        const tokenCol = headerLower.findIndex((h) => h === "token");
+        const reasonCol = headerLower.findIndex((h) => h === "reasoncodes" || h === "reason codes");
+        if (tokenCol === -1 || reasonCol === -1) {
+            return { ok: false, error: "В рейтинге не найдены колонки Token или ReasonCodes." };
+        }
+        const incorrectTokens = [];
+        for (let i = 1; i < rows.length; i += 1) {
+            const row = Array.isArray(rows[i]) ? rows[i] : [];
+            const reason = row[reasonCol];
+            const reasonNum = reason === 1 || reason === "1" || String(reason).trim() === "1";
+            if (!reasonNum) continue;
+            const token = String(row[tokenCol] || "").trim();
+            if (token) incorrectTokens.push(token);
+        }
+        return { ok: true, incorrectTokens };
+    }
+
+    /** Множество Token (ID) с ReasonCodes=1 из рейтинга по проекту. */
+    function getRatingIncorrectIdsSetForProject(projectId) {
+        const set = new Set();
+        if (!projectId) return set;
+        const key = String(projectId);
+        const arr = Array.isArray(ratingIncorrectIdsState[key]) ? ratingIncorrectIdsState[key] : [];
+        arr.forEach((t) => {
+            const s = String(t).trim();
+            if (s) set.add(s);
+        });
+        return set;
+    }
+
+    /** Загружает Excel рейтинга по projectId (URL: /lk/Project/Ratings/{id}), парсит некорректные ID (ReasonCodes=1). */
+    async function ensureRatingIncorrectIdsLoaded(projectId) {
+        if (!projectId) return false;
+        const key = String(projectId);
+        const url = `/lk/Project/Ratings/${encodeURIComponent(key)}`;
+        const referrerUrl = `${window.location.origin}/lk/Project/Edit/${encodeURIComponent(key)}`;
+        const acceptHeader = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7";
+        try {
+            const response = await fetch(url, {
+                credentials: "include",
+                referrer: referrerUrl,
+                referrerPolicy: "unsafe-url",
+                headers: {
+                    Accept: acceptHeader
+                }
+            });
+            if (!response.ok) {
+                console.warn("[QGA] Рейтинг: ответ сервера", response.status, response.statusText);
+                return false;
+            }
+            const buffer = await response.arrayBuffer();
+            const parsed = parseRatingXlsx(buffer);
+            if (!parsed.ok) {
+                console.warn("[QGA] Рейтинг: не удалось разобрать файл", parsed.error);
+                return false;
+            }
+            ratingIncorrectIdsState[key] = parsed.incorrectTokens || [];
+            saveRatingIncorrectIdsState(ratingIncorrectIdsState);
+            console.info("[QGA] Рейтинг: загружены некорректные ID (ReasonCodes=1), кол-во:", (parsed.incorrectTokens || []).length);
+            return true;
+        } catch (e) {
+            console.warn("[QGA] Рейтинг: ошибка загрузки", e);
+            return false;
+        }
+    }
+
     function buildVerifyQuestionValueKey(questionCode, valueText) {
         const q = String(questionCode || "").trim();
         const v = String(valueText || "")
@@ -3326,7 +3696,22 @@
         return state.verifyQuestionCode;
     }
 
-    function showVerifyRespondentModal(respondentId, answers, context) {
+    function getVerifyQuestionElement() {
+        const gridEl = document.querySelector("#grid, #gridOpenEnds");
+        return gridEl ? gridEl.previousElementSibling : null;
+    }
+
+    function highlightVerifyQuestion(highlight) {
+        const el = getVerifyQuestionElement();
+        if (!el) return;
+        if (highlight) {
+            el.classList.add("qga-verify-question-highlight-incorrect");
+        } else {
+            el.classList.remove("qga-verify-question-highlight-incorrect");
+        }
+    }
+
+    function showVerifyRespondentModal(respondentId, answers, context, rowState) {
         let modal = document.querySelector(".qga-verify-modal");
         if (!modal) {
             modal = document.createElement("aside");
@@ -3346,6 +3731,7 @@
             if (closeButton) {
                 closeButton.addEventListener("click", () => {
                     modal.style.display = "none";
+                    highlightVerifyQuestion(false);
                 });
             }
 
@@ -3358,6 +3744,18 @@
 
         if (titleNode) {
             titleNode.textContent = String(respondentId);
+        }
+
+        const respondentIdStr = String(respondentId).trim();
+        const projectIdForModal = getProjectIdForVerify();
+        const verifyIncorrectSetForModal = projectIdForModal ? getVerifyIncorrectIdsSetForProject(projectIdForModal) : new Set();
+        const ratingIncorrectSetForModal = projectIdForModal ? getRatingIncorrectIdsSetForProject(projectIdForModal) : new Set();
+        const isIncorrectFromRating = verifyIncorrectSetForModal.has(respondentIdStr) || ratingIncorrectSetForModal.has(respondentIdStr);
+
+        modal.classList.remove("qga-verify-modal--row-incorrect");
+        if (isIncorrectFromRating) {
+            modal.classList.add("qga-verify-modal--row-incorrect");
+            highlightVerifyQuestion(true);
         }
 
         if (listNode) {
@@ -3390,9 +3788,7 @@
 
         manualBfridsState = loadManualBfridsState();
         manualApiState = loadManualApiState();
-        const projectId = getProjectIdForVerify();
-        const alreadyInManualSet = getManualBfridsSetForProject(projectId);
-        const respondentIdStr = String(respondentId).trim();
+        const alreadyInManualSet = getManualBfridsSetForProject(projectIdForModal);
         const isAlreadyInManual = alreadyInManualSet.has(respondentIdStr);
 
         modal.classList.remove("qga-verify-modal--candidates");
@@ -3412,8 +3808,8 @@
                 : "Добавить в ручную чистку (по нажатию «Проверить страницу»)";
             manualCheckbox.dataset.respondentId = respondentIdStr;
             manualCheckbox.checked = isAlreadyInManual || state.verifyPendingManualBfrids.has(respondentIdStr);
-            manualCheckbox.disabled = isAlreadyInManual;
-            if (!isAlreadyInManual) {
+            manualCheckbox.disabled = isAlreadyInManual || isIncorrectFromRating;
+            if (!isAlreadyInManual && !isIncorrectFromRating) {
                 manualCheckbox.addEventListener("change", () => {
                     const id = manualCheckbox.dataset.respondentId;
                     if (!id) return;
@@ -3435,7 +3831,7 @@
         return context;
     }
 
-    function showVerifyRespondentCandidates(respondentIds, answersMap, context) {
+    function showVerifyRespondentCandidates(respondentIds, answersMap, context, rowState) {
         let modal = document.querySelector(".qga-verify-modal");
         if (!modal) {
             modal = document.createElement("aside");
@@ -3454,10 +3850,20 @@
             if (closeButton) {
                 closeButton.addEventListener("click", () => {
                     modal.style.display = "none";
+                    highlightVerifyQuestion(false);
                 });
             }
 
             document.documentElement.appendChild(modal);
+        }
+
+        const projectIdCandidates = getProjectIdForVerify();
+        const verifyIncorrectSetCandidates = projectIdCandidates ? getVerifyIncorrectIdsSetForProject(projectIdCandidates) : new Set();
+        const ratingIncorrectSetCandidates = projectIdCandidates ? getRatingIncorrectIdsSetForProject(projectIdCandidates) : new Set();
+        const isIncorrectId = (id) => verifyIncorrectSetCandidates.has(String(id).trim()) || ratingIncorrectSetCandidates.has(String(id).trim());
+        const hasAnyIncorrectFromRating = respondentIds.some(isIncorrectId);
+        if (hasAnyIncorrectFromRating) {
+            highlightVerifyQuestion(true);
         }
 
         modal.classList.remove("qga-verify-modal--in-manual");
@@ -3477,8 +3883,7 @@
         if (listNode) {
             manualBfridsState = loadManualBfridsState();
             manualApiState = loadManualApiState();
-            const projectId = getProjectIdForVerify();
-            const alreadyInManualSet = getManualBfridsSetForProject(projectId);
+            const alreadyInManualSet = getManualBfridsSetForProject(projectIdCandidates);
 
             for (const respondentId of respondentIds) {
                 const answers =
@@ -3488,11 +3893,15 @@
 
                 const respondentIdStr = String(respondentId).trim();
                 const isAlreadyInManual = alreadyInManualSet.has(respondentIdStr);
+                const isIncorrectFromRating = isIncorrectId(respondentIdStr);
 
                 const headerItem = document.createElement("li");
                 headerItem.className = "qga-verify-modal__item";
                 if (isAlreadyInManual) {
                     headerItem.classList.add("qga-verify-modal__item--in-manual");
+                }
+                if (isIncorrectFromRating) {
+                    headerItem.classList.add("qga-verify-modal__item--incorrect");
                 }
 
                 const header = document.createElement("div");
@@ -3510,8 +3919,8 @@
                     : "Добавить в ручную чистку (по нажатию «Проверить страницу»)";
                 manualCheckbox.dataset.respondentId = respondentIdStr;
                 manualCheckbox.checked = isAlreadyInManual || state.verifyPendingManualBfrids.has(respondentIdStr);
-                manualCheckbox.disabled = isAlreadyInManual;
-                if (!isAlreadyInManual) {
+                manualCheckbox.disabled = isAlreadyInManual || isIncorrectFromRating;
+                if (!isAlreadyInManual && !isIncorrectFromRating) {
                     manualCheckbox.addEventListener("change", () => {
                         const id = manualCheckbox.dataset.respondentId;
                         if (!id) return;
@@ -3662,6 +4071,7 @@
 
             setupVerifyRowExclusiveCheckboxes(gridRoot, row);
         }
+        applyVerifyRowVisibility(gridRoot);
     }
 
     function setupVerifyRowExclusiveCheckboxes(gridRoot, row) {
