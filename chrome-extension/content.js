@@ -5031,6 +5031,14 @@
         // пока их список не опустеет, не фильтруя по processedKeys.
         const next = state.groups[0];
         if (!next) {
+            // Массовая группировка завершена: пересобираем информацию
+            // о сгруппированных переменных на странице OpenEnds,
+            // чтобы данные были актуальны для Verify.
+            try {
+                collectOpenEndsGroupsFromPage();
+            } catch (e) {
+                console.warn("[QGA] Ошибка при collectOpenEndsGroupsFromPage после массовой группировки:", e);
+            }
             stopBulkGrouping();
             return;
         }
