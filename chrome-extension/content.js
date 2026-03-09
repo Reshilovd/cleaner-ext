@@ -2404,11 +2404,6 @@
             .qga-verify-modal--in-manual .qga-verify-modal__footer {
                 background: #ecfdf5;
             }
-            .qga-verify-row-hidden {
-                visibility: collapse !important;
-                height: 0 !important;
-                overflow: hidden !important;
-            }
             .qga-verify-modal__item--incorrect .qga-verify-modal__respondent-header,
             .qga-verify-modal__item--incorrect {
                 background-color: #fef2f2 !important;
@@ -2422,6 +2417,12 @@
             }
             .qga-verify-modal__item--in-manual .qga-verify-modal__respondent-header {
                 color: #854d0e !important;
+            }
+            .qga-verify-row-incorrect {
+                background-color: #fef2f2 !important;
+            }
+            .qga-verify-row-in-manual {
+                background-color: #fefce8 !important;
             }
             .qga-verify-question-highlight-incorrect {
                 background-color: #fef2f2 !important;
@@ -2645,7 +2646,12 @@
         return Array.from(new Set(respondentIds.map((id) => String(id))));
     }
 
-    /** Скрывает строки, где N=1 и (ID помечен некорректным локально или в рейтинге, или в ручной чистке). */
+    /**
+     * Подсвечивает строки, где N=1 и (ID помечен некорректным локально или в рейтинге, или в ручной чистке).
+     * Раньше такие строки скрывались, теперь они остаются видимыми:
+     * - красный фон, если респондент помечен некорректным;
+     * - жёлтый фон, если респондент находится в ручной чистке.
+     */
     function applyVerifyRowVisibility(gridRoot) {
         if (!gridRoot) return;
         const projectId = getProjectIdForVerify();
@@ -2655,23 +2661,33 @@
         const rows = gridRoot.querySelectorAll("tr.k-master-row");
         for (const row of rows) {
             if (!(row instanceof HTMLTableRowElement)) continue;
+            // Сбрасываем предыдущие состояния подсветки/скрытия.
+            row.classList.remove("qga-verify-row-hidden");
+            row.classList.remove("qga-verify-row-incorrect");
+            row.classList.remove("qga-verify-row-in-manual");
+
             const n = getVerifyRowN(gridRoot, row);
             if (n !== 1) {
-                row.classList.remove("qga-verify-row-hidden");
                 continue;
             }
-            let shouldHide = false;
+
+            let isIncorrect = false;
+            let isInManual = false;
+
             if (state.verifyRespondentIndexLoaded) {
                 const ids = getRespondentIdsForVerifyRow(row);
                 if (ids.length === 1) {
                     const id = ids[0];
-                    shouldHide = verifyIncorrectSet.has(id) || ratingIncorrectSet.has(id) || alreadyInManualSet.has(id);
+                    isIncorrect = verifyIncorrectSet.has(id) || ratingIncorrectSet.has(id);
+                    isInManual = alreadyInManualSet.has(id);
                 }
             }
-            if (shouldHide) {
-                row.classList.add("qga-verify-row-hidden");
-            } else {
-                row.classList.remove("qga-verify-row-hidden");
+
+            // Приоритет: некорректный > ручная чистка.
+            if (isIncorrect) {
+                row.classList.add("qga-verify-row-incorrect");
+            } else if (isInManual) {
+                row.classList.add("qga-verify-row-in-manual");
             }
         }
     }
