@@ -35,6 +35,7 @@
         variableSelector: "td:nth-child(5)",
         selectControlSelector: "td:first-child input.k-checkbox",
         groupActionSelector: "button[onclick='group()']",
+        ungroupActionSelector: "button[onclick='ungroup()']",
         minGroupSize: 2,
         similarThreshold: 0.86,
         maxItemsForSimilarMode: 1500,
@@ -125,7 +126,13 @@
         verifyRespondentIdsByValueOnly: null,
         verifyQuestionCode: null,
         /** ID респондентов, отмеченных в модалке «Другие ответы» для добавления в ручную чистку при нажатии «Проверить страницу». */
-        verifyPendingManualBfrids: new Set()
+        verifyPendingManualBfrids: new Set(),
+        /** Кнопка группировки (group()), к которой мы привязываем обновление групп OpenEnds после ручной группировки. */
+        manualGroupButtonEl: null,
+        manualGroupButtonHandler: null,
+        /** Кнопка разгруппировки (ungroup()), после которой тоже нужно обновить сохранённые группы OpenEnds. */
+        manualUngroupButtonEl: null,
+        manualUngroupButtonHandler: null
     };
 
 
@@ -168,11 +175,13 @@
                 }
             };
             scheduleCollectGroups();
+            ensureManualGroupButtonHooked();
             window.addEventListener("hashchange", () => {
                 if (!isOpenEndsHash() && state.panel) {
                     hidePanel();
                 } else {
                     scheduleCollectGroups();
+                    ensureManualGroupButtonHooked();
                 }
             });
         });
@@ -238,7 +247,37 @@
                     let respondentIds = [];
 
                     if (respondentIdsByOpenEndId && respondentIdsByOpenEndId.size > 0) {
-                        if (context.openEndId != null) {
+                        // Основной поиск: по тексту ответа и коду переменной.
+                        if (respondentIds.length === 0) {
+                            const valueText = context.valueText || "";
+                            const contextCodes = getVerifyCodesForContext(context);
+                            if (contextCodes.length > 0 && valueText) {
+                                if (contextCodes.length > 1) {
+                                    const collected = new Set();
+                                    for (const code of contextCodes) {
+                                        for (const variant of getVerifyQuestionCodeVariants(code)) {
+                                            const key = buildVerifyQuestionValueKey(variant, valueText);
+                                            const arr = respondentIdsByOpenEndId.get(key) || [];
+                                            if (Array.isArray(arr)) arr.forEach((id) => collected.add(String(id)));
+                                        }
+                                    }
+                                    if (collected.size > 0) respondentIds = Array.from(collected);
+                                }
+                                if (respondentIds.length === 0) {
+                                    const singleCode = contextCodes[0];
+                                    for (const variant of getVerifyQuestionCodeVariants(singleCode)) {
+                                        const compositeKey = buildVerifyQuestionValueKey(variant, valueText);
+                                        const fromMap = respondentIdsByOpenEndId.get(compositeKey);
+                                        if (Array.isArray(fromMap) && fromMap.length > 0) {
+                                            respondentIds = fromMap.slice();
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        // Фоллбэк: по openEndId, если он все-таки есть в строке и в выгрузке.
+                        if (respondentIds.length === 0 && context.openEndId != null) {
                             const key = String(context.openEndId).trim();
                             const idsFromMap =
                                 respondentIdsByOpenEndId.get(key) ||
@@ -248,109 +287,79 @@
                                 respondentIds = idsFromMap.slice();
                             }
                         }
-                        // Выгрузка без колонки openEndId заполняет карту по ключу «переменная||значение». При сгруппированном вопросе ищем по списку переменных из заголовка.
-                        if (respondentIds.length === 0) {
-                            const questionCode = getVerifyQuestionCode();
-                            const valueText = context.valueText || "";
-                            if (questionCode && valueText) {
-                                const groupedCodes = getVerifyGroupedVariableCodes(questionCode);
-                                if (groupedCodes.length > 1) {
-                                    const collected = new Set();
-                                    for (const code of groupedCodes) {
-                                        const key = buildVerifyQuestionValueKey(code, valueText);
-                                        const arr = respondentIdsByOpenEndId.get(key) || [];
-                                        if (Array.isArray(arr)) arr.forEach((id) => collected.add(String(id)));
-                                    }
-                                    if (collected.size > 0) respondentIds = Array.from(collected);
-                                }
-                                if (respondentIds.length === 0) {
-                                    const singleCode = getVerifyQuestionBaseCode(questionCode);
-                                    const compositeKey = buildVerifyQuestionValueKey(singleCode, valueText);
-                                    const fromMap = respondentIdsByOpenEndId.get(compositeKey);
-                                    if (Array.isArray(fromMap) && fromMap.length > 0) {
-                                        respondentIds = fromMap.slice();
-                                    }
-                                }
-                                if (respondentIds.length === 0) {
-                                    const singleCode = getVerifyQuestionBaseCode(questionCode);
-                                    const altKey = buildVerifyQuestionValueKey(
-                                        singleCode.replace(/\./g, "_"),
-                                        valueText
-                                    );
-                                    const fromAlt = respondentIdsByOpenEndId.get(altKey);
-                                    if (Array.isArray(fromAlt) && fromAlt.length > 0) {
-                                        respondentIds = fromAlt.slice();
-                                    }
-                                }
-                                if (respondentIds.length === 0) {
-                                    const singleCode = getVerifyQuestionBaseCode(questionCode);
-                                    const altKey2 = buildVerifyQuestionValueKey(
-                                        singleCode.replace(/_/g, "."),
-                                        valueText
-                                    );
-                                    const fromAlt2 = respondentIdsByOpenEndId.get(altKey2);
-                                    if (Array.isArray(fromAlt2) && fromAlt2.length > 0) {
-                                        respondentIds = fromAlt2.slice();
-                                    }
-                                }
-                            }
-                        }
                     }
 
                     if (respondentIds.length === 0 && idsByQuestionAndValue) {
-                        const questionCode = getVerifyQuestionCode();
                         const valueText = context.valueText || "";
-                        if (questionCode && valueText) {
-                            const groupedCodes = getVerifyGroupedVariableCodes(questionCode);
-                            if (groupedCodes.length > 1) {
+                        const contextCodes = getVerifyCodesForContext(context);
+                        if (contextCodes.length > 0 && valueText) {
+                            if (contextCodes.length > 1) {
                                 const collected = new Set();
-                                for (const code of groupedCodes) {
-                                    const key = buildVerifyQuestionValueKey(code, valueText);
-                                    const arr = idsByQuestionAndValue.get(key) || [];
-                                    if (Array.isArray(arr)) arr.forEach((id) => collected.add(String(id)));
+                                for (const code of contextCodes) {
+                                    for (const variant of getVerifyQuestionCodeVariants(code)) {
+                                        const key = buildVerifyQuestionValueKey(variant, valueText);
+                                        const arr = idsByQuestionAndValue.get(key) || [];
+                                        if (Array.isArray(arr)) arr.forEach((id) => collected.add(String(id)));
+                                    }
                                 }
                                 if (collected.size > 0) respondentIds = Array.from(collected);
                             }
                             if (respondentIds.length === 0) {
-                                const singleCode = getVerifyQuestionBaseCode(questionCode);
-                                const key = buildVerifyQuestionValueKey(singleCode, valueText);
-                                const fromIndex = idsByQuestionAndValue.get(key);
-                                if (Array.isArray(fromIndex) && fromIndex.length > 0) {
-                                    respondentIds = fromIndex.slice();
-                                }
-                            }
-                            if (respondentIds.length === 0) {
-                                const singleCode = getVerifyQuestionBaseCode(questionCode);
-                                const altKey = buildVerifyQuestionValueKey(
-                                    singleCode.replace(/\./g, "_"),
-                                    valueText
-                                );
-                                const fromAlt = idsByQuestionAndValue.get(altKey);
-                                if (Array.isArray(fromAlt) && fromAlt.length > 0) {
-                                    respondentIds = fromAlt.slice();
-                                }
-                            }
-                            if (respondentIds.length === 0) {
-                                const singleCode = getVerifyQuestionBaseCode(questionCode);
-                                const altKey2 = buildVerifyQuestionValueKey(
-                                    singleCode.replace(/_/g, "."),
-                                    valueText
-                                );
-                                const fromAlt2 = idsByQuestionAndValue.get(altKey2);
-                                if (Array.isArray(fromAlt2) && fromAlt2.length > 0) {
-                                    respondentIds = fromAlt2.slice();
+                                const singleCode = contextCodes[0];
+                                for (const variant of getVerifyQuestionCodeVariants(singleCode)) {
+                                    const key = buildVerifyQuestionValueKey(variant, valueText);
+                                    const fromIndex = idsByQuestionAndValue.get(key);
+                                    if (Array.isArray(fromIndex) && fromIndex.length > 0) {
+                                        respondentIds = fromIndex.slice();
+                                        break;
+                                    }
                                 }
                             }
                         }
                     }
 
+                    // Фоллбэк по одному только тексту ответа:
+                    // если знаем код вопроса — жёстко ограничиваемся его группой
+                    // (или самим кодом, если вопрос не сгруппирован).
+                    // Если код вопроса определить не удалось — используем все ID
+                    // с таким текстом (как в исходной версии).
                     if (respondentIds.length === 0 && idsByValueOnly) {
                         const valueText = context.valueText || "";
                         if (valueText) {
                             const key = buildVerifyValueOnlyKey(valueText);
                             const fromIndex = idsByValueOnly.get(key);
                             if (Array.isArray(fromIndex) && fromIndex.length > 0) {
-                                respondentIds = fromIndex.slice();
+                                const allowedCodes = getVerifyCodesForContext(context);
+
+                                if (allowedCodes.length > 0) {
+
+                                    const allowedCodeSet = new Set(
+                                        allowedCodes.flatMap((code) => getVerifyQuestionCodeVariants(code))
+                                    );
+                                    const allowedIdsSet = new Set();
+                                    for (const rawId of fromIndex) {
+                                        const idStr = String(rawId).trim();
+                                        if (!idStr) continue;
+                                        const answersForId =
+                                            answersMap.get(idStr) ||
+                                            answersMap.get(idStr.trim()) ||
+                                            [];
+                                        const hasAnswerInGroup = answersForId.some((ans) => {
+                                            const q = String(ans && ans.question ? ans.question : "").trim();
+                                            const answerValueKey = buildVerifyValueOnlyKey(
+                                                ans && ans.value ? ans.value : ""
+                                            );
+                                            return q && allowedCodeSet.has(q) && answerValueKey === key;
+                                        });
+                                        if (hasAnswerInGroup) {
+                                            allowedIdsSet.add(idStr);
+                                        }
+                                    }
+                                    respondentIds = Array.from(allowedIdsSet);
+                                } else {
+                                    // Не удалось определить код вопроса — используем все ID по тексту.
+                                    respondentIds = fromIndex.slice();
+                                }
                             }
                         }
                     }
@@ -2436,67 +2445,57 @@
         `;
         document.documentElement.appendChild(style);
     }
+    function getVerifyGridRootByRow(row) {
+        if (!row || !(row instanceof HTMLElement)) return null;
+        return row.closest("#grid, #gridOpenEnds, [data-role='grid']") || null;
+    }
+
+    function findVerifyRowCellByHeader(row, headerMatchers) {
+        if (!row || !(row instanceof HTMLTableRowElement) || !Array.isArray(headerMatchers) || !headerMatchers.length) {
+            return null;
+        }
+        const gridRoot = getVerifyGridRootByRow(row);
+        const headerRow = gridRoot
+            ? gridRoot.querySelector(".k-grid-header thead tr[role='row']")
+            : null;
+        const headerCells = headerRow ? headerRow.querySelectorAll("th[role='columnheader']") : null;
+        const cells = row.querySelectorAll("td[role='gridcell']");
+        if (!headerCells || !headerCells.length || !cells.length) {
+            return null;
+        }
+        for (let i = 0; i < headerCells.length && i < cells.length; i += 1) {
+            const text = String(headerCells[i].textContent || "").trim().toLowerCase();
+            if (!text) continue;
+            if (headerMatchers.some((matcher) => text.includes(matcher))) {
+                return cells[i];
+            }
+        }
+        return null;
+    }
+
     function resolveVerifyRowContext(row) {
         let openEndId = null;
         let valueText = "";
+        let variableText = "";
 
-        try {
-            if (window.jQuery) {
-                const $ = window.jQuery;
-                const $row = $(row);
-                const gridInstance =
-                    $row.closest("[data-role='grid']").data("kendoGrid") ||
-                    $("#grid").data("kendoGrid") ||
-                    $("#gridOpenEnds").data("kendoGrid") ||
-                    null;
-                if (gridInstance && typeof gridInstance.dataItem === "function") {
-                    const item = gridInstance.dataItem($row);
-                    if (item) {
-                        if (item.Value != null) {
-                            valueText = String(item.Value);
-                        }
-                        if (item.Id != null || item.id != null) {
-                            openEndId = item.Id != null ? item.Id : item.id;
-                        } else {
-                            // Попробуем найти подходящее поле Id эвристически.
-                            const candidateKeys = Object.keys(item);
-                            let bestKey = null;
-                            for (const key of candidateKeys) {
-                                const lower = key.toLowerCase();
-                                if (
-                                    lower === "id" ||
-                                    lower === "openendid" ||
-                                    lower === "openend_id" ||
-                                    (lower.endsWith("id") && lower.includes("open"))
-                                ) {
-                                    bestKey = key;
-                                    break;
-                                }
-                            }
-                            if (!bestKey) {
-                                for (const key of candidateKeys) {
-                                    const lower = key.toLowerCase();
-                                    if (lower.endsWith("id")) {
-                                        bestKey = key;
-                                        break;
-                                    }
-                                }
-                            }
-                            if (bestKey && item[bestKey] != null) {
-                                openEndId = item[bestKey];
-                            } else {
-                                console.warn("[QGA] VerifyMain: не найдено подходящее поле Id в dataItem строки:", item);
-                            }
-                        }
-                    }
+        const questionElement = getVerifyQuestionElement();
+        if (questionElement && questionElement.textContent) {
+            const questionText = questionElement.textContent.trim();
+            const parsedCodes = parseVerifyVariableCodes(questionText);
+            if (parsedCodes.length > 0) {
+                const groupedCodes = getVerifyGroupedVariableCodes(parsedCodes[0]);
+                if (groupedCodes.length > 0) {
+                    variableText = groupedCodes.join("; ");
+                } else {
+                    variableText = parsedCodes.join("; ");
                 }
             }
-        } catch (error) {
-            console.warn("[QGA] Не удалось получить dataItem из kendoGrid для VerifyMain:", error);
         }
 
         if (!valueText) {
-            const valueCell = row.querySelector("td[role='gridcell']:nth-child(3)");
+            const valueCell =
+                row.querySelector("td[role='gridcell'][data-field='Value']") ||
+                findVerifyRowCellByHeader(row, ["значен", "value", "ответ", "answer", "openend", "текст"]);
             if (valueCell && valueCell.textContent) {
                 valueText = valueCell.textContent.trim();
             }
@@ -2514,7 +2513,9 @@
 
         return {
             openEndId,
-            valueText
+            valueText,
+            variableText,
+            variableCodes: parseVerifyVariableCodes(variableText)
         };
     }
 
@@ -2590,58 +2591,108 @@
         if (!respondentIdsByOpenEndId && !idsByQuestionAndValue && !idsByValueOnly) return [];
         let respondentIds = [];
         if (respondentIdsByOpenEndId && respondentIdsByOpenEndId.size > 0) {
-            if (context.openEndId != null) {
-                const key = String(context.openEndId).trim();
-                const idsFromMap = respondentIdsByOpenEndId.get(key) || respondentIdsByOpenEndId.get(String(context.openEndId)) || [];
-                if (Array.isArray(idsFromMap) && idsFromMap.length > 0) respondentIds = idsFromMap.slice();
-            }
             if (respondentIds.length === 0) {
-                const questionCode = getVerifyQuestionCode();
                 const valueText = context.valueText || "";
-                if (questionCode && valueText) {
-                    const groupedCodes = getVerifyGroupedVariableCodes(questionCode);
-                    if (groupedCodes.length > 1) {
+                const contextCodes = getVerifyCodesForContext(context);
+                if (contextCodes.length > 0 && valueText) {
+                    if (contextCodes.length > 1) {
                         const collected = new Set();
-                        for (const code of groupedCodes) {
-                            const key = buildVerifyQuestionValueKey(code, valueText);
-                            const arr = respondentIdsByOpenEndId.get(key) || [];
-                            if (Array.isArray(arr)) arr.forEach((id) => collected.add(String(id)));
+                        for (const code of contextCodes) {
+                            for (const variant of getVerifyQuestionCodeVariants(code)) {
+                                const key = buildVerifyQuestionValueKey(variant, valueText);
+                                const arr = respondentIdsByOpenEndId.get(key) || [];
+                                if (Array.isArray(arr)) arr.forEach((id) => collected.add(String(id)));
+                            }
                         }
                         if (collected.size > 0) respondentIds = Array.from(collected);
                     }
-                    const singleCode = getVerifyQuestionBaseCode(questionCode);
                     if (respondentIds.length === 0) {
-                        const compositeKey = buildVerifyQuestionValueKey(singleCode, valueText);
-                        const fromMap = respondentIdsByOpenEndId.get(compositeKey);
-                        if (Array.isArray(fromMap) && fromMap.length > 0) respondentIds = fromMap.slice();
-                    }
-                    if (respondentIds.length === 0) {
-                        const altKey = buildVerifyQuestionValueKey(singleCode.replace(/\./g, "_"), valueText);
-                        const fromAlt = respondentIdsByOpenEndId.get(altKey);
-                        if (Array.isArray(fromAlt) && fromAlt.length > 0) respondentIds = fromAlt.slice();
-                    }
-                    if (respondentIds.length === 0) {
-                        const altKey2 = buildVerifyQuestionValueKey(singleCode.replace(/_/g, "."), valueText);
-                        const fromAlt2 = respondentIdsByOpenEndId.get(altKey2);
-                        if (Array.isArray(fromAlt2) && fromAlt2.length > 0) respondentIds = fromAlt2.slice();
+                        const singleCode = contextCodes[0];
+                        for (const variant of getVerifyQuestionCodeVariants(singleCode)) {
+                            const compositeKey = buildVerifyQuestionValueKey(variant, valueText);
+                            const fromMap = respondentIdsByOpenEndId.get(compositeKey);
+                            if (Array.isArray(fromMap) && fromMap.length > 0) {
+                                respondentIds = fromMap.slice();
+                                break;
+                            }
+                        }
                     }
                 }
             }
+            if (respondentIds.length === 0 && context.openEndId != null) {
+                const key = String(context.openEndId).trim();
+                const idsFromMap =
+                    respondentIdsByOpenEndId.get(key) ||
+                    respondentIdsByOpenEndId.get(String(context.openEndId)) ||
+                    [];
+                if (Array.isArray(idsFromMap) && idsFromMap.length > 0) respondentIds = idsFromMap.slice();
+            }
         }
         if (respondentIds.length === 0 && idsByQuestionAndValue) {
-            const questionCode = getVerifyQuestionCode();
             const valueText = context.valueText || "";
-            if (questionCode && valueText) {
-                const singleCode = getVerifyQuestionBaseCode(questionCode);
-                const key = buildVerifyQuestionValueKey(singleCode, valueText);
-                const fromIndex = idsByQuestionAndValue.get(key);
-                if (Array.isArray(fromIndex) && fromIndex.length > 0) respondentIds = fromIndex.slice();
+            const contextCodes = getVerifyCodesForContext(context);
+            if (contextCodes.length > 0 && valueText) {
+                if (contextCodes.length > 1) {
+                    const collected = new Set();
+                    for (const code of contextCodes) {
+                        for (const variant of getVerifyQuestionCodeVariants(code)) {
+                            const key = buildVerifyQuestionValueKey(variant, valueText);
+                            const arr = idsByQuestionAndValue.get(key) || [];
+                            if (Array.isArray(arr)) arr.forEach((id) => collected.add(String(id)));
+                        }
+                    }
+                    if (collected.size > 0) respondentIds = Array.from(collected);
+                }
+                if (respondentIds.length === 0) {
+                    const singleCode = contextCodes[0];
+                    for (const variant of getVerifyQuestionCodeVariants(singleCode)) {
+                        const key = buildVerifyQuestionValueKey(variant, valueText);
+                        const fromIndex = idsByQuestionAndValue.get(key);
+                        if (Array.isArray(fromIndex) && fromIndex.length > 0) {
+                            respondentIds = fromIndex.slice();
+                            break;
+                        }
+                    }
+                }
             }
         }
         if (respondentIds.length === 0 && idsByValueOnly && context.valueText) {
             const key = buildVerifyValueOnlyKey(context.valueText);
             const fromIndex = idsByValueOnly.get(key);
-            if (Array.isArray(fromIndex) && fromIndex.length > 0) respondentIds = fromIndex.slice();
+            if (Array.isArray(fromIndex) && fromIndex.length > 0) {
+                const allowedCodes = getVerifyCodesForContext(context);
+                if (allowedCodes.length > 0) {
+
+                    const allowedCodeSet = new Set(
+                        allowedCodes.flatMap((code) => getVerifyQuestionCodeVariants(code))
+                    );
+                    const allowedIds = new Set();
+                    const answersMap = state.verifyAnswersByRespondentId || new Map();
+                    for (const rawId of fromIndex) {
+                        const idStr = String(rawId).trim();
+                        if (!idStr) continue;
+                        const answersForId =
+                            answersMap.get(idStr) ||
+                            answersMap.get(idStr.trim()) ||
+                            [];
+                        const hasAnswerInGroup = answersForId.some((ans) => {
+                            const q = String(ans && ans.question ? ans.question : "").trim();
+                            const answerValueKey = buildVerifyValueOnlyKey(
+                                ans && ans.value ? ans.value : ""
+                            );
+                            return q && allowedCodeSet.has(q) && answerValueKey === key;
+                        });
+                        if (hasAnswerInGroup) {
+                            allowedIds.add(idStr);
+                        }
+                    }
+                    if (allowedIds.size > 0) {
+                        respondentIds = Array.from(allowedIds);
+                    }
+                } else {
+                    respondentIds = fromIndex.slice();
+                }
+            }
         }
         return Array.from(new Set(respondentIds.map((id) => String(id))));
     }
@@ -2850,13 +2901,7 @@
         for (const row of rows) {
             const cell = row.querySelector(variableSelector);
             const text = (cell && (cell.textContent || cell.innerText || "").trim()) || "";
-            const parts = text.split(";").map((s) => s.trim()).filter(Boolean);
-            const codes = parts
-                .map((p) => {
-                    const m = p.match(/^(Q[0-9A-Za-z_.]+(_other)?)/);
-                    return m ? m[1] : "";
-                })
-                .filter(Boolean);
+            const codes = parseVerifyVariableCodes(text);
             if (codes.length > 1) {
                 for (const code of codes) {
                     groupByCode[code] = codes.slice();
@@ -3628,6 +3673,58 @@
             .trim();
     }
 
+    function getVerifyCodesForContext(context) {
+        if (context && Array.isArray(context.variableCodes) && context.variableCodes.length > 0) {
+            const directCodes = context.variableCodes
+                .map((code) => String(code || "").trim())
+                .filter(Boolean);
+            if (directCodes.length > 1) {
+                return directCodes;
+            }
+            if (directCodes.length === 1) {
+                const groupedCodes = getVerifyGroupedVariableCodes(directCodes[0]);
+                if (groupedCodes.length > 1) {
+                    return groupedCodes.map((code) => String(code || "").trim()).filter(Boolean);
+                }
+            }
+            return directCodes;
+        }
+        const questionCode = getVerifyQuestionCode();
+        if (!questionCode) return [];
+        const groupedCodes = getVerifyGroupedVariableCodes(questionCode);
+        if (groupedCodes.length > 1) {
+            return groupedCodes.map((code) => String(code || "").trim()).filter(Boolean);
+        }
+        const baseCode = getVerifyQuestionBaseCode(questionCode);
+        return baseCode ? [String(baseCode).trim()] : [];
+    }
+
+    function getVerifyQuestionCodeVariants(questionCode) {
+        const code = String(questionCode || "").trim();
+        if (!code) return [];
+        const variants = new Set([code]);
+        variants.add(code.replace(/\.(?=\d)/g, "_"));
+        variants.add(code.replace(/_(?=\d)/g, "."));
+        return Array.from(variants).filter(Boolean);
+    }
+
+    function parseVerifyVariableCodes(text) {
+        const parts = String(text || "")
+            .split(/[;\n]+/)
+            .map((s) => s.trim())
+            .filter(Boolean);
+        const codes = [];
+        for (const part of parts) {
+            // Поддерживаем переменные, начинающиеся не только с Q,
+            // а с любой буквы (A-Z), далее цифры/буквы/._ и опциональный суффикс _other.
+            const m = part.match(/^([A-Za-z]+[0-9A-Za-z_.]*(_other)?)/);
+            if (!m || !m[1]) continue;
+            const normalized = String(m[1]).trim();
+            if (normalized) codes.push(normalized);
+        }
+        return Array.from(new Set(codes));
+    }
+
     /** Список переменных группы для questionCode. Сначала из данных, собранных на странице Project Edit #openEnds (ключ — ID из URL Edit); иначе из заголовка на странице проверки. */
     function getVerifyGroupedVariableCodes(questionCode) {
         const code = String(questionCode || "").trim();
@@ -3635,33 +3732,21 @@
         if (projectKey && code) {
             const all = loadOpenEndsGroups();
             const projectGroups = all[projectKey];
-            if (projectGroups && projectGroups[code] && Array.isArray(projectGroups[code]) && projectGroups[code].length > 1) {
-                return projectGroups[code];
-            }
-        }
-        const gridEl = document.querySelector("#grid, #gridOpenEnds");
-        let text = "";
-        if (gridEl) {
-            const prev = gridEl.previousElementSibling;
-            if (prev && prev.textContent) text = prev.textContent;
-            if (!text && gridEl.parentElement) {
-                const parentPrev = gridEl.parentElement.previousElementSibling;
-                if (parentPrev && parentPrev.textContent) text = parentPrev.textContent;
-            }
-            if (!text && gridEl.parentElement) {
-                const wrapper = gridEl.parentElement.closest("div");
-                if (wrapper && wrapper.previousElementSibling && wrapper.previousElementSibling.textContent) {
-                    text = wrapper.previousElementSibling.textContent;
+            if (projectGroups) {
+                for (const variant of getVerifyQuestionCodeVariants(code)) {
+                    if (
+                        projectGroups[variant] &&
+                        Array.isArray(projectGroups[variant]) &&
+                        projectGroups[variant].length > 1
+                    ) {
+                        return Array.from(new Set(projectGroups[variant]));
+                    }
                 }
             }
         }
-        const parts = text.split(";").map((s) => s.trim()).filter(Boolean);
-        const variableCodes = parts
-            .map((p) => {
-                const m = p.match(/^(Q[0-9A-Za-z_.]+(_other)?)/);
-                return m ? m[1] : "";
-            })
-            .filter(Boolean);
+        const questionElement = getVerifyQuestionElement();
+        const text = questionElement && questionElement.textContent ? questionElement.textContent : "";
+        const variableCodes = parseVerifyVariableCodes(text);
         return variableCodes.length > 1 ? variableCodes : [];
     }
 
@@ -3684,21 +3769,29 @@
         }
 
         let candidate = "";
+        const questionElement = getVerifyQuestionElement();
+        const questionText = questionElement && questionElement.textContent ? questionElement.textContent : "";
+        const parsedCodes = parseVerifyVariableCodes(questionText);
+        if (parsedCodes.length > 0) {
+            candidate = parsedCodes[0];
+        }
 
-        const headerNode = document.querySelector("#grid, #gridOpenEnds")?.previousElementSibling;
         const sources = [];
-        if (headerNode && headerNode.textContent) {
-            sources.push(headerNode.textContent);
+        if (questionText) {
+            sources.push(questionText);
         }
         const titleNode = document.querySelector("body");
         if (titleNode && titleNode.textContent) {
             sources.push(titleNode.textContent);
         }
 
-        const combined = sources.join("\n");
-        const match = combined.match(/(Q[0-9A-Za-z_.]+(?:_other)?)/);
-        if (match && match[1]) {
-            candidate = match[1];
+        if (!candidate) {
+            const combined = sources.join("\n");
+            // Код вопроса также может начинаться не только с Q.
+            const match = combined.match(/([A-Za-z][0-9A-Za-z_.]*(?:_other)?)/);
+            if (match && match[1]) {
+                candidate = match[1];
+            }
         }
 
         state.verifyQuestionCode = candidate || null;
@@ -3706,8 +3799,12 @@
     }
 
     function getVerifyQuestionElement() {
-        const gridEl = document.querySelector("#grid, #gridOpenEnds");
-        return gridEl ? gridEl.previousElementSibling : null;
+        return (
+            document.querySelector("#divVerifyOpenEnds > div.row > div:nth-child(1) > div") ||
+            document.querySelector("#divVerifyOpenEnds .row > div:first-child > div") ||
+            document.querySelector("#grid, #gridOpenEnds")?.previousElementSibling ||
+            null
+        );
     }
 
     function highlightVerifyQuestion(highlight) {
@@ -4277,7 +4374,6 @@
         panel.querySelector("#qga-clear").addEventListener("click", () => clearHighlights());
         updateBulkButtonState();
     }
-
     function setupAutoRescanObserver() {
         if (state.observer) {
             state.observer.disconnect();
@@ -4338,6 +4434,8 @@
             state.groupBlockIndexes.clear();
         }
 
+        ensureManualGroupButtonHooked();
+
         if (!state.gridAllPageSizeEnsured) {
             const pageSizeResult = ensureGridPageSizeAll();
             if (pageSizeResult && pageSizeResult.ensured) {
@@ -4365,6 +4463,80 @@
         }
 
         performRescanCore();
+    }
+
+    /**
+     * Обеспечивает привязку обработчика к кнопке группировки (group()),
+     * чтобы после ручной группировки пересканировать OpenEnds и сохранить
+     * актуальные группы переменных в localStorage.
+     */
+    function ensureManualGroupButtonHooked() {
+        const delay = clampInt(
+            Number(state.settings.postGroupRescanDelayMs),
+            300,
+            10000,
+            DEFAULT_SETTINGS.postGroupRescanDelayMs
+        ) + 600;
+
+        const attachHandler = (selector, stateKeyEl, stateKeyHandler, label) => {
+            if (!selector) {
+                return;
+            }
+
+            let button = null;
+            try {
+                button = document.querySelector(selector);
+            } catch (error) {
+                console.warn(`[QGA] Некорректный селектор кнопки ${label}:`, selector, error);
+                return;
+            }
+
+            if (!(button instanceof HTMLElement)) {
+                return;
+            }
+
+            if (state[stateKeyEl] === button && state[stateKeyHandler]) {
+                return;
+            }
+
+            if (state[stateKeyEl] && state[stateKeyHandler]) {
+                try {
+                    state[stateKeyEl].removeEventListener("click", state[stateKeyHandler]);
+                } catch (e) {}
+            }
+
+            const handler = () => {
+                try {
+                    setTimeout(() => {
+                        try {
+                            collectOpenEndsGroupsFromPage();
+                        } catch (e) {
+                            console.warn(
+                                `[QGA] Ошибка collectOpenEndsGroupsFromPage после ${label}:`,
+                                e
+                            );
+                        }
+                    }, delay);
+                } catch (e) {}
+            };
+
+            button.addEventListener("click", handler);
+            state[stateKeyEl] = button;
+            state[stateKeyHandler] = handler;
+        };
+
+        attachHandler(
+            state.settings && state.settings.groupActionSelector,
+            "manualGroupButtonEl",
+            "manualGroupButtonHandler",
+            "ручной группировки"
+        );
+        attachHandler(
+            state.settings && state.settings.ungroupActionSelector,
+            "manualUngroupButtonEl",
+            "manualUngroupButtonHandler",
+            "ручной разгруппировки"
+        );
     }
 
     function performRescanCore() {
