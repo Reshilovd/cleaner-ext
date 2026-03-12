@@ -3841,6 +3841,13 @@
                 });
             }
 
+            document.addEventListener("click", function closeOnClickOutside(e) {
+                if (modal.style.display !== "flex") return;
+                if (modal.contains(e.target)) return;
+                modal.style.display = "none";
+                highlightVerifyQuestion(false);
+            });
+
             document.documentElement.appendChild(modal);
         }
 
@@ -3959,6 +3966,13 @@
                     highlightVerifyQuestion(false);
                 });
             }
+
+            document.addEventListener("click", function closeOnClickOutside(e) {
+                if (modal.style.display !== "flex") return;
+                if (modal.contains(e.target)) return;
+                modal.style.display = "none";
+                highlightVerifyQuestion(false);
+            });
 
             document.documentElement.appendChild(modal);
         }
