@@ -2517,17 +2517,23 @@
             .qga-verify-row-incorrect:hover {
                 background-color: #fecaca !important;
             }
-            td[role='gridcell']:has(.qga-inc-icon),
-            td[role='gridcell']:has(.qga-speed-icon) {
+            .qga-cell-text {
                 position: relative;
             }
-            .qga-inc-icon, .qga-speed-icon {
+            .qga-reason-icons {
                 position: absolute;
-                right: 4px;
+                left: 100%;
                 top: 50%;
                 transform: translateY(-50%);
+                display: grid;
+                grid-template-columns: repeat(2, 18px);
+                gap: 2px;
+                margin-left: 3px;
+            }
+            .qga-reason-icons img {
                 width: 18px;
                 height: 18px;
+                display: block;
             }
             .qga-verify-row-disputed {
                 background-color: #f3e8ff !important;
@@ -2837,12 +2843,18 @@
         const verifyIncorrectSet = projectId ? getVerifyIncorrectIdsSetForProject(projectId) : new Set();
         const ratingReasonMap = projectId ? getRatingReasonCodesForProject(projectId) : {};
         const rows = gridRoot.querySelectorAll("tr.k-master-row");
-        const incIconUrl = chrome.runtime.getURL("icons/inc.png");
-        const speedIconUrl = chrome.runtime.getURL("icons/speed.png");
-
         const REASON_ICON_CONFIG = {
-            1: { url: incIconUrl, cls: "qga-inc-icon", alt: "Некорректный ответ" },
-            4: { url: speedIconUrl, cls: "qga-speed-icon", alt: "Спидстер" }
+            1: { url: chrome.runtime.getURL("icons/inc.png"), alt: "Некорректный ответ" },
+            4: { url: chrome.runtime.getURL("icons/speed.png"), alt: "Спидстер" },
+            6: { url: chrome.runtime.getURL("icons/manual.png"), alt: "Ручная чистка" }
+        };
+
+        const ROW_BG_COLOR = {
+            1: "#fee2e2",
+            2: "#f3e8ff",
+            3: "#dbeafe",
+            4: "#ffedd5",
+            6: "#fef9c3"
         };
 
         for (const row of rows) {
@@ -2850,41 +2862,76 @@
             row.classList.remove("qga-verify-row-hidden");
             ALL_ROW_REASON_CLASSES.forEach((cls) => row.classList.remove(cls));
 
+            row.style.removeProperty("background");
+
             const n = getVerifyRowN(gridRoot, row);
             if (n !== 1) {
                 continue;
             }
 
+            let allCodes = [];
             let topCode = 0;
 
             if (state.verifyRespondentIndexLoaded) {
                 const ids = getRespondentIdsForVerifyRow(row);
                 if (ids.length === 1) {
-                    topCode = getRespondentTopReasonCode(ids[0], projectId, verifyIncorrectSet, ratingReasonMap, alreadyInManualSet);
+                    allCodes = getRespondentAllReasonCodes(ids[0], verifyIncorrectSet, ratingReasonMap, alreadyInManualSet);
+                    topCode = getTopReasonCode(allCodes);
                 }
             }
 
-            const rowClass = REASON_CODE_ROW_CLASS[topCode];
-            if (rowClass) {
-                row.classList.add(rowClass);
+            if (allCodes.length > 1) {
+                const colors = allCodes.map((c) => ROW_BG_COLOR[c]).filter(Boolean);
+                if (colors.length > 1) {
+                    row.style.background = "linear-gradient(to right, " + colors.join(", ") + ")";
+                }
+            } else {
+                const rowClass = REASON_CODE_ROW_CLASS[topCode];
+                if (rowClass) {
+                    row.classList.add(rowClass);
+                }
             }
 
-            const iconCfg = REASON_ICON_CONFIG[topCode];
             const firstCell = row.querySelector("td[role='gridcell']");
-
-            for (const cfg of Object.values(REASON_ICON_CONFIG)) {
-                const existing = firstCell ? firstCell.querySelector("img." + cfg.cls) : null;
-                if (iconCfg && iconCfg.cls === cfg.cls) {
-                    if (!existing && firstCell) {
-                        const icon = document.createElement("img");
-                        icon.src = iconCfg.url;
-                        icon.className = iconCfg.cls;
-                        icon.alt = iconCfg.alt;
-                        icon.title = iconCfg.alt;
-                        firstCell.appendChild(icon);
+            if (firstCell) {
+                let textWrap = firstCell.querySelector(".qga-cell-text");
+                if (!textWrap) {
+                    textWrap = document.createElement("span");
+                    textWrap.className = "qga-cell-text";
+                    while (firstCell.childNodes.length) {
+                        textWrap.appendChild(firstCell.childNodes[0]);
                     }
-                } else if (existing) {
-                    existing.remove();
+                    firstCell.appendChild(textWrap);
+                }
+
+                let iconsWrap = textWrap.querySelector(".qga-reason-icons");
+                const neededCodes = allCodes.filter((c) => REASON_ICON_CONFIG[c]);
+
+                if (neededCodes.length > 0) {
+                    if (!iconsWrap) {
+                        iconsWrap = document.createElement("span");
+                        iconsWrap.className = "qga-reason-icons";
+                        textWrap.appendChild(iconsWrap);
+                    }
+
+                    const currentSrcs = new Set(
+                        Array.from(iconsWrap.querySelectorAll("img")).map((img) => img.src)
+                    );
+                    const neededSrcs = new Set(neededCodes.map((c) => REASON_ICON_CONFIG[c].url));
+
+                    if (currentSrcs.size !== neededSrcs.size || ![...currentSrcs].every((s) => neededSrcs.has(s))) {
+                        iconsWrap.innerHTML = "";
+                        for (const code of neededCodes) {
+                            const cfg = REASON_ICON_CONFIG[code];
+                            const icon = document.createElement("img");
+                            icon.src = cfg.url;
+                            icon.alt = cfg.alt;
+                            icon.title = cfg.alt;
+                            iconsWrap.appendChild(icon);
+                        }
+                    }
+                } else if (iconsWrap) {
+                    iconsWrap.remove();
                 }
             }
 
@@ -3826,7 +3873,7 @@
      * Определяет приоритетный ReasonCode для респондента по всем источникам.
      * Учитывает: локальную пометку (код 1), рейтинг, технический брак (код 6).
      */
-    function getRespondentTopReasonCode(respondentId, projectId, verifyIncorrectSet, ratingReasonMap, manualSet) {
+    function getRespondentAllReasonCodes(respondentId, verifyIncorrectSet, ratingReasonMap, manualSet) {
         const id = String(respondentId).trim();
         const codes = [];
         if (verifyIncorrectSet && verifyIncorrectSet.has(id)) codes.push(1);
@@ -3834,6 +3881,11 @@
             codes.push(...ratingReasonMap[id]);
         }
         if (manualSet && manualSet.has(id)) codes.push(6);
+        return [...new Set(codes)];
+    }
+
+    function getRespondentTopReasonCode(respondentId, projectId, verifyIncorrectSet, ratingReasonMap, manualSet) {
+        const codes = getRespondentAllReasonCodes(respondentId, verifyIncorrectSet, ratingReasonMap, manualSet);
         return getTopReasonCode(codes);
     }
 
@@ -4080,13 +4132,36 @@
         const verifyIncorrectSetForModal = projectIdForModal ? getVerifyIncorrectIdsSetForProject(projectIdForModal) : new Set();
         const ratingReasonMapForModal = projectIdForModal ? getRatingReasonCodesForProject(projectIdForModal) : {};
         const manualSetForModal = projectIdForModal ? getManualBfridsSetForProject(projectIdForModal) : new Set();
-        const topReasonCode = getRespondentTopReasonCode(respondentIdStr, projectIdForModal, verifyIncorrectSetForModal, ratingReasonMapForModal, manualSetForModal);
+        const allCodesForModal = getRespondentAllReasonCodes(respondentIdStr, verifyIncorrectSetForModal, ratingReasonMapForModal, manualSetForModal);
+        const topReasonCode = getTopReasonCode(allCodesForModal);
         const isIncorrectFromRating = topReasonCode > 0;
 
+        const MODAL_BG_COLOR = {
+            1: "#fee2e2",
+            2: "#f3e8ff",
+            3: "#dbeafe",
+            4: "#ffedd5",
+            6: "#fef9c3"
+        };
+
         ALL_MODAL_REASON_CLASSES.forEach((cls) => modal.classList.remove(cls));
-        const modalReasonClass = REASON_CODE_MODAL_CLASS[topReasonCode];
-        if (modalReasonClass) {
-            modal.classList.add(modalReasonClass);
+        const bodyEl = modal.querySelector(".qga-verify-modal__body");
+        const footerEl = modal.querySelector(".qga-verify-modal__footer");
+        if (bodyEl) bodyEl.style.removeProperty("background");
+        if (footerEl) footerEl.style.removeProperty("background");
+
+        if (allCodesForModal.length > 1) {
+            const colors = allCodesForModal.map((c) => MODAL_BG_COLOR[c]).filter(Boolean);
+            if (colors.length > 1) {
+                const gradient = "linear-gradient(to right, " + colors.join(", ") + ")";
+                if (bodyEl) bodyEl.style.background = gradient;
+                if (footerEl) footerEl.style.background = gradient;
+            }
+        } else {
+            const modalReasonClass = REASON_CODE_MODAL_CLASS[topReasonCode];
+            if (modalReasonClass) {
+                modal.classList.add(modalReasonClass);
+            }
         }
 
         if (listNode) {
@@ -4229,6 +4304,27 @@
             manualApiState = loadManualApiState();
             const alreadyInManualSet = getManualBfridsSetForProject(projectIdCandidates);
 
+            const REASON_CODE_BG_COLOR = {
+                1: "#fee2e2",
+                2: "#f3e8ff",
+                3: "#dbeafe",
+                4: "#ffedd5",
+                6: "#fef9c3"
+            };
+            const REASON_CODE_TEXT_COLOR = {
+                1: "#b91c1c",
+                2: "#6b21a8",
+                3: "#1e40af",
+                4: "#9a3412",
+                6: "#854d0e"
+            };
+
+            const CANDIDATE_ICON_CONFIG = {
+                1: { url: chrome.runtime.getURL("icons/inc.png"), alt: "Некорректный ответ" },
+                4: { url: chrome.runtime.getURL("icons/speed.png"), alt: "Спидстер" },
+                6: { url: chrome.runtime.getURL("icons/manual.png"), alt: "Ручная чистка" }
+            };
+
             for (const respondentId of respondentIds) {
                 const answers =
                     answersMap.get(String(respondentId)) ||
@@ -4237,14 +4333,24 @@
 
                 const respondentIdStr = String(respondentId).trim();
                 const isAlreadyInManual = alreadyInManualSet.has(respondentIdStr);
-                const candidateTopCode = getRespondentTopReasonCode(respondentIdStr, projectIdCandidates, verifyIncorrectSetCandidates, ratingReasonMapCandidates, alreadyInManualSet);
+                const candidateAllCodes = getRespondentAllReasonCodes(respondentIdStr, verifyIncorrectSetCandidates, ratingReasonMapCandidates, alreadyInManualSet);
+                const candidateTopCode = getTopReasonCode(candidateAllCodes);
                 const isIncorrectFromRating = candidateTopCode > 0;
 
                 const headerItem = document.createElement("li");
                 headerItem.className = "qga-verify-modal__item";
-                const itemReasonClass = REASON_CODE_ITEM_CLASS[candidateTopCode];
-                if (itemReasonClass) {
-                    headerItem.classList.add(itemReasonClass);
+
+                if (candidateAllCodes.length > 1) {
+                    const colors = candidateAllCodes.map((c) => REASON_CODE_BG_COLOR[c]).filter(Boolean);
+                    if (colors.length > 1) {
+                        const gradient = "linear-gradient(to right, " + colors.join(", ") + ")";
+                        headerItem.style.background = gradient;
+                    }
+                } else {
+                    const itemReasonClass = REASON_CODE_ITEM_CLASS[candidateTopCode];
+                    if (itemReasonClass) {
+                        headerItem.classList.add(itemReasonClass);
+                    }
                 }
 
                 const header = document.createElement("div");
@@ -4253,6 +4359,12 @@
                 header.style.alignItems = "center";
                 header.style.gap = "8px";
                 header.style.flexWrap = "wrap";
+
+                if (candidateAllCodes.length > 1) {
+                    header.style.background = "transparent";
+                    const textColor = REASON_CODE_TEXT_COLOR[candidateTopCode];
+                    if (textColor) header.style.color = textColor;
+                }
 
                 const manualCheckbox = document.createElement("input");
                 manualCheckbox.type = "checkbox";
@@ -4280,20 +4392,18 @@
 
                 header.appendChild(idSpan);
 
-                const CANDIDATE_ICON_CONFIG = {
-                    1: { url: chrome.runtime.getURL("icons/inc.png"), alt: "Некорректный ответ" },
-                    4: { url: chrome.runtime.getURL("icons/speed.png"), alt: "Спидстер" }
-                };
-                const iconCfg = CANDIDATE_ICON_CONFIG[candidateTopCode];
-                if (iconCfg) {
-                    const icon = document.createElement("img");
-                    icon.src = iconCfg.url;
-                    icon.alt = iconCfg.alt;
-                    icon.title = iconCfg.alt;
-                    icon.style.width = "16px";
-                    icon.style.height = "16px";
-                    icon.style.verticalAlign = "middle";
-                    header.appendChild(icon);
+                for (const code of candidateAllCodes) {
+                    const iconCfg = CANDIDATE_ICON_CONFIG[code];
+                    if (iconCfg) {
+                        const icon = document.createElement("img");
+                        icon.src = iconCfg.url;
+                        icon.alt = iconCfg.alt;
+                        icon.title = iconCfg.alt;
+                        icon.style.width = "16px";
+                        icon.style.height = "16px";
+                        icon.style.verticalAlign = "middle";
+                        header.appendChild(icon);
+                    }
                 }
 
                 headerItem.appendChild(header);
