@@ -2349,10 +2349,11 @@
                 padding: 6px 8px;
                 overflow: auto;
                 --qga-scrollbar-thumb: rgba(156, 163, 175, 0.25);
-                transition: --qga-scrollbar-thumb 0.3s ease-in-out;
+                transition: --qga-scrollbar-thumb 0.4s ease;
             }
             .qga-verify-modal__body--scrollbar-hover {
                 --qga-scrollbar-thumb: #9ca3af;
+                transition: --qga-scrollbar-thumb 0.4s ease;
             }
             .qga-verify-modal__body::-webkit-scrollbar {
                 width: 6px;
