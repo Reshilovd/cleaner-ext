@@ -2412,7 +2412,7 @@
                 padding-top: 6px;
                 border-top: 1px solid #e5e7eb;
             }
-            .qga-verify-modal__item--in-manual {
+            .qga-verify-modal__item--tech-defect {
                 background: #fef9c3;
                 margin-left: -8px;
                 margin-right: -8px;
@@ -2422,7 +2422,7 @@
                 padding-bottom: 4px;
                 border-radius: 4px;
             }
-            .qga-verify-modal__item--in-manual .qga-verify-modal__respondent-header {
+            .qga-verify-modal__item--tech-defect .qga-verify-modal__respondent-header {
                 background: #fef9c3;
             }
             .qga-verify-modal__respondent-header {
@@ -2468,8 +2468,8 @@
                 font-size: 12px;
                 color: #374151;
             }
-            .qga-verify-modal--in-manual .qga-verify-modal__body,
-            .qga-verify-modal--in-manual .qga-verify-modal__footer {
+            .qga-verify-modal--tech-defect .qga-verify-modal__body,
+            .qga-verify-modal--tech-defect .qga-verify-modal__footer {
                 background: #fef9c3;
             }
             .qga-verify-modal__item--incorrect .qga-verify-modal__respondent-header,
@@ -2480,35 +2480,35 @@
             .qga-verify-modal__item--incorrect .qga-verify-modal__respondent-header {
                 color: #b91c1c !important;
             }
-            .qga-verify-modal__item--reason-2 .qga-verify-modal__respondent-header,
-            .qga-verify-modal__item--reason-2 {
+            .qga-verify-modal__item--disputed .qga-verify-modal__respondent-header,
+            .qga-verify-modal__item--disputed {
                 background-color: #f3e8ff !important;
             }
 
-            .qga-verify-modal__item--reason-2 .qga-verify-modal__respondent-header {
+            .qga-verify-modal__item--disputed .qga-verify-modal__respondent-header {
                 color: #6b21a8 !important;
             }
-            .qga-verify-modal__item--reason-3 .qga-verify-modal__respondent-header,
-            .qga-verify-modal__item--reason-3 {
+            .qga-verify-modal__item--duplicate .qga-verify-modal__respondent-header,
+            .qga-verify-modal__item--duplicate {
                 background-color: #dbeafe !important;
             }
 
-            .qga-verify-modal__item--reason-3 .qga-verify-modal__respondent-header {
+            .qga-verify-modal__item--duplicate .qga-verify-modal__respondent-header {
                 color: #1e40af !important;
             }
-            .qga-verify-modal__item--reason-4 .qga-verify-modal__respondent-header,
-            .qga-verify-modal__item--reason-4 {
+            .qga-verify-modal__item--speedster .qga-verify-modal__respondent-header,
+            .qga-verify-modal__item--speedster {
                 background-color: #ffedd5 !important;
             }
 
-            .qga-verify-modal__item--reason-4 .qga-verify-modal__respondent-header {
+            .qga-verify-modal__item--speedster .qga-verify-modal__respondent-header {
                 color: #9a3412 !important;
             }
-            .qga-verify-modal__item--in-manual .qga-verify-modal__respondent-header,
-            .qga-verify-modal__item--in-manual {
+            .qga-verify-modal__item--tech-defect .qga-verify-modal__respondent-header,
+            .qga-verify-modal__item--tech-defect {
                 background: #fef9c3 !important;
             }
-            .qga-verify-modal__item--in-manual .qga-verify-modal__respondent-header {
+            .qga-verify-modal__item--tech-defect .qga-verify-modal__respondent-header {
                 color: #854d0e !important;
             }
             .qga-verify-row-incorrect {
@@ -2517,10 +2517,11 @@
             .qga-verify-row-incorrect:hover {
                 background-color: #fecaca !important;
             }
-            td[role='gridcell']:has(.qga-inc-icon) {
+            td[role='gridcell']:has(.qga-inc-icon),
+            td[role='gridcell']:has(.qga-speed-icon) {
                 position: relative;
             }
-            .qga-inc-icon {
+            .qga-inc-icon, .qga-speed-icon {
                 position: absolute;
                 right: 4px;
                 top: 50%;
@@ -2528,44 +2529,44 @@
                 width: 18px;
                 height: 18px;
             }
-            .qga-verify-row-reason-2 {
+            .qga-verify-row-disputed {
                 background-color: #f3e8ff !important;
             }
-            .qga-verify-row-reason-2:hover {
+            .qga-verify-row-disputed:hover {
                 background-color: #e9d5ff !important;
             }
-            .qga-verify-row-reason-3 {
+            .qga-verify-row-duplicate {
                 background-color: #dbeafe !important;
             }
-            .qga-verify-row-reason-3:hover {
+            .qga-verify-row-duplicate:hover {
                 background-color: #bfdbfe !important;
             }
-            .qga-verify-row-reason-4 {
+            .qga-verify-row-speedster {
                 background-color: #ffedd5 !important;
             }
-            .qga-verify-row-reason-4:hover {
+            .qga-verify-row-speedster:hover {
                 background-color: #fed7aa !important;
             }
-            .qga-verify-row-in-manual {
+            .qga-verify-row-tech-defect {
                 background-color: #fef9c3 !important;
             }
-            .qga-verify-row-in-manual:hover {
+            .qga-verify-row-tech-defect:hover {
                 background-color: #fef08a !important;
             }
             .qga-verify-modal--row-incorrect .qga-verify-modal__body,
             .qga-verify-modal--row-incorrect .qga-verify-modal__footer {
                 background-color: #fee2e2 !important;
             }
-            .qga-verify-modal--row-reason-2 .qga-verify-modal__body,
-            .qga-verify-modal--row-reason-2 .qga-verify-modal__footer {
+            .qga-verify-modal--row-disputed .qga-verify-modal__body,
+            .qga-verify-modal--row-disputed .qga-verify-modal__footer {
                 background-color: #f3e8ff !important;
             }
-            .qga-verify-modal--row-reason-3 .qga-verify-modal__body,
-            .qga-verify-modal--row-reason-3 .qga-verify-modal__footer {
+            .qga-verify-modal--row-duplicate .qga-verify-modal__body,
+            .qga-verify-modal--row-duplicate .qga-verify-modal__footer {
                 background-color: #dbeafe !important;
             }
-            .qga-verify-modal--row-reason-4 .qga-verify-modal__body,
-            .qga-verify-modal--row-reason-4 .qga-verify-modal__footer {
+            .qga-verify-modal--row-speedster .qga-verify-modal__body,
+            .qga-verify-modal--row-speedster .qga-verify-modal__footer {
                 background-color: #ffedd5 !important;
             }
         `;
@@ -2825,8 +2826,9 @@
 
     /**
      * Подсвечивает строки, где N=1, цветом по приоритетному ReasonCode:
-     * 1 (красный), 2 (фиолетовый), 3 (синий), 4 (оранжевый), 6 (жёлтый).
-     * Локальная пометка → код 1, ручная чистка → код 6.
+     * 1 — некорректный (красный), 2 — спорное интервью (фиолетовый),
+     * 3 — одинаковые ответы (синий), 4 — спидстер (оранжевый),
+     * 6 — технический брак (жёлтый).
      */
     function applyVerifyRowVisibility(gridRoot) {
         if (!gridRoot) return;
@@ -2836,6 +2838,12 @@
         const ratingReasonMap = projectId ? getRatingReasonCodesForProject(projectId) : {};
         const rows = gridRoot.querySelectorAll("tr.k-master-row");
         const incIconUrl = chrome.runtime.getURL("icons/inc.png");
+        const speedIconUrl = chrome.runtime.getURL("icons/speed.png");
+
+        const REASON_ICON_CONFIG = {
+            1: { url: incIconUrl, cls: "qga-inc-icon", alt: "Некорректный ответ" },
+            4: { url: speedIconUrl, cls: "qga-speed-icon", alt: "Спидстер" }
+        };
 
         for (const row of rows) {
             if (!(row instanceof HTMLTableRowElement)) continue;
@@ -2861,21 +2869,23 @@
                 row.classList.add(rowClass);
             }
 
-            const existingIcon = row.querySelector("img.qga-inc-icon");
-            if (topCode === 1) {
-                if (!existingIcon) {
-                    const firstCell = row.querySelector("td[role='gridcell']");
-                    if (firstCell) {
+            const iconCfg = REASON_ICON_CONFIG[topCode];
+            const firstCell = row.querySelector("td[role='gridcell']");
+
+            for (const cfg of Object.values(REASON_ICON_CONFIG)) {
+                const existing = firstCell ? firstCell.querySelector("img." + cfg.cls) : null;
+                if (iconCfg && iconCfg.cls === cfg.cls) {
+                    if (!existing && firstCell) {
                         const icon = document.createElement("img");
-                        icon.src = incIconUrl;
-                        icon.className = "qga-inc-icon";
-                        icon.alt = "Некорректный ответ";
-                        icon.title = "Некорректный ответ";
+                        icon.src = iconCfg.url;
+                        icon.className = iconCfg.cls;
+                        icon.alt = iconCfg.alt;
+                        icon.title = iconCfg.alt;
                         firstCell.appendChild(icon);
                     }
+                } else if (existing) {
+                    existing.remove();
                 }
-            } else if (existingIcon) {
-                existingIcon.remove();
             }
 
         }
@@ -3773,26 +3783,26 @@
 
     const REASON_CODE_ROW_CLASS = {
         1: "qga-verify-row-incorrect",
-        2: "qga-verify-row-reason-2",
-        3: "qga-verify-row-reason-3",
-        4: "qga-verify-row-reason-4",
-        6: "qga-verify-row-in-manual"
+        2: "qga-verify-row-disputed",
+        3: "qga-verify-row-duplicate",
+        4: "qga-verify-row-speedster",
+        6: "qga-verify-row-tech-defect"
     };
 
     const REASON_CODE_ITEM_CLASS = {
         1: "qga-verify-modal__item--incorrect",
-        2: "qga-verify-modal__item--reason-2",
-        3: "qga-verify-modal__item--reason-3",
-        4: "qga-verify-modal__item--reason-4",
-        6: "qga-verify-modal__item--in-manual"
+        2: "qga-verify-modal__item--disputed",
+        3: "qga-verify-modal__item--duplicate",
+        4: "qga-verify-modal__item--speedster",
+        6: "qga-verify-modal__item--tech-defect"
     };
 
     const REASON_CODE_MODAL_CLASS = {
         1: "qga-verify-modal--row-incorrect",
-        2: "qga-verify-modal--row-reason-2",
-        3: "qga-verify-modal--row-reason-3",
-        4: "qga-verify-modal--row-reason-4",
-        6: "qga-verify-modal--in-manual"
+        2: "qga-verify-modal--row-disputed",
+        3: "qga-verify-modal--row-duplicate",
+        4: "qga-verify-modal--row-speedster",
+        6: "qga-verify-modal--tech-defect"
     };
 
     const ALL_ROW_REASON_CLASSES = Object.values(REASON_CODE_ROW_CLASS);
@@ -3801,7 +3811,7 @@
 
     /**
      * Определяет приоритетный ReasonCode для респондента.
-     * Приоритет: 1 (красный) > 6 (жёлтый) > 3 (синий) > 4 (оранжевый) > 2 (фиолетовый).
+     * Приоритет: 1 (некорректный) > 6 (тех. брак) > 3 (одинаковые) > 4 (спидстер) > 2 (спорный).
      * Возвращает номер кода или 0, если кодов нет.
      */
     function getTopReasonCode(reasonCodes) {
@@ -3814,7 +3824,7 @@
 
     /**
      * Определяет приоритетный ReasonCode для респондента по всем источникам.
-     * Учитывает: локальную пометку (код 1), рейтинг, ручную чистку (код 6).
+     * Учитывает: локальную пометку (код 1), рейтинг, технический брак (код 6).
      */
     function getRespondentTopReasonCode(respondentId, projectId, verifyIncorrectSet, ratingReasonMap, manualSet) {
         const id = String(respondentId).trim();
@@ -4114,9 +4124,9 @@
 
         modal.classList.remove("qga-verify-modal--candidates");
         if (isAlreadyInManual) {
-            modal.classList.add("qga-verify-modal--in-manual");
+            modal.classList.add("qga-verify-modal--tech-defect");
         } else {
-            modal.classList.remove("qga-verify-modal--in-manual");
+            modal.classList.remove("qga-verify-modal--tech-defect");
         }
 
         if (footerNode) {
@@ -4269,6 +4279,23 @@
                 idSpan.textContent = `${respondentId}`;
 
                 header.appendChild(idSpan);
+
+                const CANDIDATE_ICON_CONFIG = {
+                    1: { url: chrome.runtime.getURL("icons/inc.png"), alt: "Некорректный ответ" },
+                    4: { url: chrome.runtime.getURL("icons/speed.png"), alt: "Спидстер" }
+                };
+                const iconCfg = CANDIDATE_ICON_CONFIG[candidateTopCode];
+                if (iconCfg) {
+                    const icon = document.createElement("img");
+                    icon.src = iconCfg.url;
+                    icon.alt = iconCfg.alt;
+                    icon.title = iconCfg.alt;
+                    icon.style.width = "16px";
+                    icon.style.height = "16px";
+                    icon.style.verticalAlign = "middle";
+                    header.appendChild(icon);
+                }
+
                 headerItem.appendChild(header);
 
                 if (!answers || answers.length === 0) {
