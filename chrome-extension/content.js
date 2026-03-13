@@ -2476,12 +2476,33 @@
             .qga-verify-modal__item--incorrect {
                 background-color: #fee2e2 !important;
             }
-            .qga-verify-modal__item--incorrect:hover,
-            .qga-verify-modal__item--incorrect:hover .qga-verify-modal__respondent-header {
-                background-color: #fecaca !important;
-            }
+
             .qga-verify-modal__item--incorrect .qga-verify-modal__respondent-header {
                 color: #b91c1c !important;
+            }
+            .qga-verify-modal__item--reason-2 .qga-verify-modal__respondent-header,
+            .qga-verify-modal__item--reason-2 {
+                background-color: #f3e8ff !important;
+            }
+
+            .qga-verify-modal__item--reason-2 .qga-verify-modal__respondent-header {
+                color: #6b21a8 !important;
+            }
+            .qga-verify-modal__item--reason-3 .qga-verify-modal__respondent-header,
+            .qga-verify-modal__item--reason-3 {
+                background-color: #dbeafe !important;
+            }
+
+            .qga-verify-modal__item--reason-3 .qga-verify-modal__respondent-header {
+                color: #1e40af !important;
+            }
+            .qga-verify-modal__item--reason-4 .qga-verify-modal__respondent-header,
+            .qga-verify-modal__item--reason-4 {
+                background-color: #ffedd5 !important;
+            }
+
+            .qga-verify-modal__item--reason-4 .qga-verify-modal__respondent-header {
+                color: #9a3412 !important;
             }
             .qga-verify-modal__item--in-manual .qga-verify-modal__respondent-header,
             .qga-verify-modal__item--in-manual {
@@ -2496,6 +2517,24 @@
             .qga-verify-row-incorrect:hover {
                 background-color: #fecaca !important;
             }
+            .qga-verify-row-reason-2 {
+                background-color: #f3e8ff !important;
+            }
+            .qga-verify-row-reason-2:hover {
+                background-color: #e9d5ff !important;
+            }
+            .qga-verify-row-reason-3 {
+                background-color: #dbeafe !important;
+            }
+            .qga-verify-row-reason-3:hover {
+                background-color: #bfdbfe !important;
+            }
+            .qga-verify-row-reason-4 {
+                background-color: #ffedd5 !important;
+            }
+            .qga-verify-row-reason-4:hover {
+                background-color: #fed7aa !important;
+            }
             .qga-verify-row-in-manual {
                 background-color: #fef9c3 !important;
             }
@@ -2505,6 +2544,18 @@
             .qga-verify-modal--row-incorrect .qga-verify-modal__body,
             .qga-verify-modal--row-incorrect .qga-verify-modal__footer {
                 background-color: #fee2e2 !important;
+            }
+            .qga-verify-modal--row-reason-2 .qga-verify-modal__body,
+            .qga-verify-modal--row-reason-2 .qga-verify-modal__footer {
+                background-color: #f3e8ff !important;
+            }
+            .qga-verify-modal--row-reason-3 .qga-verify-modal__body,
+            .qga-verify-modal--row-reason-3 .qga-verify-modal__footer {
+                background-color: #dbeafe !important;
+            }
+            .qga-verify-modal--row-reason-4 .qga-verify-modal__body,
+            .qga-verify-modal--row-reason-4 .qga-verify-modal__footer {
+                background-color: #ffedd5 !important;
             }
         `;
         document.documentElement.appendChild(style);
@@ -2762,48 +2813,41 @@
     }
 
     /**
-     * Подсвечивает строки, где N=1 и (ID помечен некорректным локально или в рейтинге, или в ручной чистке).
-     * Раньше такие строки скрывались, теперь они остаются видимыми:
-     * - красный фон, если респондент помечен некорректным;
-     * - жёлтый фон, если респондент находится в ручной чистке.
+     * Подсвечивает строки, где N=1, цветом по приоритетному ReasonCode:
+     * 1 (красный), 2 (фиолетовый), 3 (синий), 4 (оранжевый), 6 (жёлтый).
+     * Локальная пометка → код 1, ручная чистка → код 6.
      */
     function applyVerifyRowVisibility(gridRoot) {
         if (!gridRoot) return;
         const projectId = getProjectIdForVerify();
         const alreadyInManualSet = projectId ? getManualBfridsSetForProject(projectId) : new Set();
         const verifyIncorrectSet = projectId ? getVerifyIncorrectIdsSetForProject(projectId) : new Set();
-        const ratingIncorrectSet = projectId ? getRatingIncorrectIdsSetForProject(projectId) : new Set();
+        const ratingReasonMap = projectId ? getRatingReasonCodesForProject(projectId) : {};
         const rows = gridRoot.querySelectorAll("tr.k-master-row");
         for (const row of rows) {
             if (!(row instanceof HTMLTableRowElement)) continue;
-            // Сбрасываем предыдущие состояния подсветки/скрытия.
             row.classList.remove("qga-verify-row-hidden");
-            row.classList.remove("qga-verify-row-incorrect");
-            row.classList.remove("qga-verify-row-in-manual");
+            ALL_ROW_REASON_CLASSES.forEach((cls) => row.classList.remove(cls));
 
             const n = getVerifyRowN(gridRoot, row);
             if (n !== 1) {
                 continue;
             }
 
-            let isIncorrect = false;
-            let isInManual = false;
+            let topCode = 0;
 
             if (state.verifyRespondentIndexLoaded) {
                 const ids = getRespondentIdsForVerifyRow(row);
                 if (ids.length === 1) {
-                    const id = ids[0];
-                    isIncorrect = verifyIncorrectSet.has(id) || ratingIncorrectSet.has(id);
-                    isInManual = alreadyInManualSet.has(id);
+                    topCode = getRespondentTopReasonCode(ids[0], projectId, verifyIncorrectSet, ratingReasonMap, alreadyInManualSet);
                 }
             }
 
-            // Приоритет: некорректный > ручная чистка.
-            if (isIncorrect) {
-                row.classList.add("qga-verify-row-incorrect");
-            } else if (isInManual) {
-                row.classList.add("qga-verify-row-in-manual");
+            const rowClass = REASON_CODE_ROW_CLASS[topCode];
+            if (rowClass) {
+                row.classList.add(rowClass);
             }
+
         }
     }
 
@@ -3624,8 +3668,8 @@
 
     /**
      * Парсит Excel рейтинга (кнопка «Рейтинг»): колонки Token, ReasonCodes.
-     * Некорректные ID — строки с ReasonCodes === 1.
-     * Возвращает { ok: true, incorrectTokens: string[] } или { ok: false, error }.
+     * ReasonCodes может содержать несколько кодов через пробел (например "1 3 6").
+     * Возвращает { ok: true, tokenReasonCodes: { [token]: number[] } } или { ok: false, error }.
      */
     function parseRatingXlsx(arrayBuffer) {
         if (!(arrayBuffer instanceof ArrayBuffer)) {
@@ -3653,7 +3697,7 @@
             return { ok: false, error: "Не удалось преобразовать лист рейтинга в данные." };
         }
         if (!Array.isArray(rows) || rows.length < 2) {
-            return { ok: true, incorrectTokens: [] };
+            return { ok: true, tokenReasonCodes: {} };
         }
         const headerCells = rows[0].map((cell) => String(cell || "").trim());
         const headerLower = headerCells.map((h) => h.toLowerCase());
@@ -3662,32 +3706,98 @@
         if (tokenCol === -1 || reasonCol === -1) {
             return { ok: false, error: "В рейтинге не найдены колонки Token или ReasonCodes." };
         }
-        const incorrectTokens = [];
+        const tokenReasonCodes = {};
         for (let i = 1; i < rows.length; i += 1) {
             const row = Array.isArray(rows[i]) ? rows[i] : [];
-            const reason = row[reasonCol];
-            const reasonNum = reason === 1 || reason === "1" || String(reason).trim() === "1";
-            if (!reasonNum) continue;
+            const reasonRaw = row[reasonCol];
+            if (reasonRaw == null || String(reasonRaw).trim() === "") continue;
+            const codes = String(reasonRaw).trim().split(/\s+/).map(Number).filter((n) => n > 0 && Number.isFinite(n));
+            if (codes.length === 0) continue;
             const token = String(row[tokenCol] || "").trim();
-            if (token) incorrectTokens.push(token);
+            if (token) tokenReasonCodes[token] = codes;
         }
-        return { ok: true, incorrectTokens };
+        return { ok: true, tokenReasonCodes };
     }
 
-    /** Множество Token (ID) с ReasonCodes=1 из рейтинга по проекту. */
-    function getRatingIncorrectIdsSetForProject(projectId) {
-        const set = new Set();
-        if (!projectId) return set;
+    /** Маппинг token → reason codes из рейтинга для проекта. */
+    function getRatingReasonCodesForProject(projectId) {
+        if (!projectId) return {};
         const key = String(projectId);
-        const arr = Array.isArray(ratingIncorrectIdsState[key]) ? ratingIncorrectIdsState[key] : [];
-        arr.forEach((t) => {
-            const s = String(t).trim();
-            if (s) set.add(s);
-        });
-        return set;
+        const data = ratingIncorrectIdsState[key];
+        if (!data || typeof data !== "object") return {};
+        if (Array.isArray(data)) {
+            const map = {};
+            data.forEach((t) => { const s = String(t).trim(); if (s) map[s] = [1]; });
+            return map;
+        }
+        return data;
     }
 
-    /** Загружает Excel рейтинга по projectId (URL: /lk/Project/Ratings/{id}), парсит некорректные ID (ReasonCodes=1). */
+    /** Множество Token (ID) с любым ReasonCode из рейтинга по проекту. */
+    function getRatingIncorrectIdsSetForProject(projectId) {
+        const map = getRatingReasonCodesForProject(projectId);
+        return new Set(Object.keys(map));
+    }
+
+    const REASON_CODE_PRIORITY = [1, 6, 3, 4, 2];
+
+    const REASON_CODE_ROW_CLASS = {
+        1: "qga-verify-row-incorrect",
+        2: "qga-verify-row-reason-2",
+        3: "qga-verify-row-reason-3",
+        4: "qga-verify-row-reason-4",
+        6: "qga-verify-row-in-manual"
+    };
+
+    const REASON_CODE_ITEM_CLASS = {
+        1: "qga-verify-modal__item--incorrect",
+        2: "qga-verify-modal__item--reason-2",
+        3: "qga-verify-modal__item--reason-3",
+        4: "qga-verify-modal__item--reason-4",
+        6: "qga-verify-modal__item--in-manual"
+    };
+
+    const REASON_CODE_MODAL_CLASS = {
+        1: "qga-verify-modal--row-incorrect",
+        2: "qga-verify-modal--row-reason-2",
+        3: "qga-verify-modal--row-reason-3",
+        4: "qga-verify-modal--row-reason-4",
+        6: "qga-verify-modal--in-manual"
+    };
+
+    const ALL_ROW_REASON_CLASSES = Object.values(REASON_CODE_ROW_CLASS);
+    const ALL_MODAL_REASON_CLASSES = Object.values(REASON_CODE_MODAL_CLASS);
+    const ALL_ITEM_REASON_CLASSES = Object.values(REASON_CODE_ITEM_CLASS);
+
+    /**
+     * Определяет приоритетный ReasonCode для респондента.
+     * Приоритет: 1 (красный) > 6 (жёлтый) > 3 (синий) > 4 (оранжевый) > 2 (фиолетовый).
+     * Возвращает номер кода или 0, если кодов нет.
+     */
+    function getTopReasonCode(reasonCodes) {
+        if (!reasonCodes || !Array.isArray(reasonCodes) || reasonCodes.length === 0) return 0;
+        for (const code of REASON_CODE_PRIORITY) {
+            if (reasonCodes.includes(code)) return code;
+        }
+        return reasonCodes[0] || 0;
+    }
+
+    /**
+     * Определяет приоритетный ReasonCode для респондента по всем источникам.
+     * Учитывает: локальную пометку (код 1), рейтинг, ручную чистку (код 6).
+     */
+    function getRespondentTopReasonCode(respondentId, projectId, verifyIncorrectSet, ratingReasonMap, manualSet) {
+        const id = String(respondentId).trim();
+        const codes = [];
+        if (verifyIncorrectSet && verifyIncorrectSet.has(id)) codes.push(1);
+        if (ratingReasonMap && ratingReasonMap[id]) {
+            codes.push(...ratingReasonMap[id]);
+        }
+        if (manualSet && manualSet.has(id)) codes.push(6);
+        return getTopReasonCode(codes);
+    }
+
+    /** Загружает Excel рейтинга по projectId (URL: /lk/Project/Ratings/{id}), парсит все ReasonCodes. */
     async function ensureRatingIncorrectIdsLoaded(projectId) {
         if (!projectId) return false;
         const key = String(projectId);
@@ -3713,9 +3823,10 @@
                 console.warn("[QGA] Рейтинг: не удалось разобрать файл", parsed.error);
                 return false;
             }
-            ratingIncorrectIdsState[key] = parsed.incorrectTokens || [];
+            ratingIncorrectIdsState[key] = parsed.tokenReasonCodes || {};
             saveRatingIncorrectIdsState(ratingIncorrectIdsState);
-            console.info("[QGA] Рейтинг: загружены некорректные ID (ReasonCodes=1), кол-во:", (parsed.incorrectTokens || []).length);
+            const count = Object.keys(parsed.tokenReasonCodes || {}).length;
+            console.info("[QGA] Рейтинг: загружены ID с ReasonCodes, кол-во:", count);
             return true;
         } catch (e) {
             console.warn("[QGA] Рейтинг: ошибка загрузки", e);
@@ -3927,12 +4038,15 @@
         const respondentIdStr = String(respondentId).trim();
         const projectIdForModal = getProjectIdForVerify();
         const verifyIncorrectSetForModal = projectIdForModal ? getVerifyIncorrectIdsSetForProject(projectIdForModal) : new Set();
-        const ratingIncorrectSetForModal = projectIdForModal ? getRatingIncorrectIdsSetForProject(projectIdForModal) : new Set();
-        const isIncorrectFromRating = verifyIncorrectSetForModal.has(respondentIdStr) || ratingIncorrectSetForModal.has(respondentIdStr);
+        const ratingReasonMapForModal = projectIdForModal ? getRatingReasonCodesForProject(projectIdForModal) : {};
+        const manualSetForModal = projectIdForModal ? getManualBfridsSetForProject(projectIdForModal) : new Set();
+        const topReasonCode = getRespondentTopReasonCode(respondentIdStr, projectIdForModal, verifyIncorrectSetForModal, ratingReasonMapForModal, manualSetForModal);
+        const isIncorrectFromRating = topReasonCode > 0;
 
-        modal.classList.remove("qga-verify-modal--row-incorrect");
-        if (isIncorrectFromRating) {
-            modal.classList.add("qga-verify-modal--row-incorrect");
+        ALL_MODAL_REASON_CLASSES.forEach((cls) => modal.classList.remove(cls));
+        const modalReasonClass = REASON_CODE_MODAL_CLASS[topReasonCode];
+        if (modalReasonClass) {
+            modal.classList.add(modalReasonClass);
         }
 
         if (listNode) {
@@ -4054,11 +4168,9 @@
 
         const projectIdCandidates = getProjectIdForVerify();
         const verifyIncorrectSetCandidates = projectIdCandidates ? getVerifyIncorrectIdsSetForProject(projectIdCandidates) : new Set();
-        const ratingIncorrectSetCandidates = projectIdCandidates ? getRatingIncorrectIdsSetForProject(projectIdCandidates) : new Set();
-        const isIncorrectId = (id) => verifyIncorrectSetCandidates.has(String(id).trim()) || ratingIncorrectSetCandidates.has(String(id).trim());
-        const hasAnyIncorrectFromRating = respondentIds.some(isIncorrectId);
+        const ratingReasonMapCandidates = projectIdCandidates ? getRatingReasonCodesForProject(projectIdCandidates) : {};
 
-        modal.classList.remove("qga-verify-modal--in-manual");
+        ALL_MODAL_REASON_CLASSES.forEach((cls) => modal.classList.remove(cls));
         modal.classList.add("qga-verify-modal--candidates");
 
         const titleNode = modal.querySelector(".qga-verify-modal__title");
@@ -4085,15 +4197,14 @@
 
                 const respondentIdStr = String(respondentId).trim();
                 const isAlreadyInManual = alreadyInManualSet.has(respondentIdStr);
-                const isIncorrectFromRating = isIncorrectId(respondentIdStr);
+                const candidateTopCode = getRespondentTopReasonCode(respondentIdStr, projectIdCandidates, verifyIncorrectSetCandidates, ratingReasonMapCandidates, alreadyInManualSet);
+                const isIncorrectFromRating = candidateTopCode > 0;
 
                 const headerItem = document.createElement("li");
                 headerItem.className = "qga-verify-modal__item";
-                if (isAlreadyInManual) {
-                    headerItem.classList.add("qga-verify-modal__item--in-manual");
-                }
-                if (isIncorrectFromRating) {
-                    headerItem.classList.add("qga-verify-modal__item--incorrect");
+                const itemReasonClass = REASON_CODE_ITEM_CLASS[candidateTopCode];
+                if (itemReasonClass) {
+                    headerItem.classList.add(itemReasonClass);
                 }
 
                 const header = document.createElement("div");
