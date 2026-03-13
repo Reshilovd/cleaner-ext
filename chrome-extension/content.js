@@ -21,6 +21,14 @@
     const PYRUS_QUICK_FILL_BUTTON_ID = "qga-pyrus-quick-fill-single";
     const PYRUS_QUICK_FILL_WRAPPER_CLASS = "qga-pyrus-quick-fill-wrapper";
     const CLEANER_AUTO_FILL_QUERY_KEY = "qga_autofill";
+
+    const PYRUS_FIELD_XPATHS = {
+        projectName: "/html/body/div[1]/div[1]/div[2]/div[3]/div[2]/div[2]/div[1]/aside/div[1]/div/div/div[7]/div[1]/div/div/div/div[2]/div/div/div[1]/div/div/div",
+        projectId: "/html/body/div/div[1]/div[2]/div[3]/div[2]/div[2]/div[1]/aside/div[1]/div/div/div[13]/div/div/div[2]/div[2]/div/div[4]/div/div/div/div[3]/div/div/div[1]/div/div/div",
+        plan: "/html/body/div/div[1]/div[2]/div[3]/div[2]/div[2]/div[1]/aside/div[1]/div/div/div[13]/div/div/div[2]/div[2]/div/div[5]/div/div/div/div[3]/div/div/div[1]/div/div/div",
+        dbName: "/html/body/div[1]/div[1]/div[2]/div[3]/div[2]/div[2]/div[1]/aside/div[1]/div/div/div[17]/div/div/div[2]/div[2]/div/div[6]/div/div/div/div[3]/div/div/div[1]/div/div/div"
+    };
+
     const MANUAL_BFRIDS_STORAGE_KEY = "__qga_manual_bfrids_v1__";
     const MANUAL_API_STATE_STORAGE_KEY = "__qga_manual_api_state_v1__";
     const RATING_INCORRECT_IDS_STORAGE_KEY = "__qga_rating_incorrect_ids_v1__";
@@ -843,9 +851,6 @@
                 return;
             }
 
-            if (result.missing.length > 0) {
-                alert(`Данные сохранены, но не найдены поля: ${result.missing.join(", ")}. Форма заполнится частично.`);
-            }
         } finally {
             if (button) {
                 if (button instanceof HTMLButtonElement) {
@@ -861,18 +866,31 @@
     }
 
     async function copyPyrusPayloadToStorage() {
-        const payload = await collectPyrusProjectPayloadWithExpansion();
+        const rawPayload = await collectPyrusProjectPayloadWithExpansion();
+        const notFoundByXPath = rawPayload.notFoundByXPath || [];
+
+        const payload = {
+            projectName: rawPayload.projectName,
+            projectId: rawPayload.projectId,
+            plan: rawPayload.plan,
+            dbName: rawPayload.dbName
+        };
+
         const hasAnyValue = Boolean(payload.projectName || payload.projectId || payload.plan || payload.dbName);
         if (!hasAnyValue) {
+            const notFoundMsg = notFoundByXPath.length > 0
+                ? ` Не удалось найти по XPath: ${notFoundByXPath.join(", ")}.`
+                : "";
             return {
                 ok: false,
-                message: "Не удалось найти поля на странице Pyrus. Проверьте, что карточка проекта полностью открыта."
+                message: `Не удалось найти поля на странице Pyrus.${notFoundMsg} Проверьте, что карточка проекта полностью открыта и группа «Сетап» раскрыта.`
             };
         }
 
         payload.sourceUrl = window.location.href;
         payload.sourceTitle = document.title || "";
         payload.copiedAt = new Date().toISOString();
+        payload.notFoundByXPath = notFoundByXPath;
 
         const saved = await saveProjectPayload(payload);
         if (!saved) {
@@ -914,6 +932,7 @@
     function buildCleanerAutoFillUrl() {
         const url = new URL("https://clr.env7.biz/lk");
         url.searchParams.set(CLEANER_AUTO_FILL_QUERY_KEY, "1");
+        url.searchParams.set("_t", Date.now().toString());
         return url.toString();
     }
 
@@ -967,36 +986,20 @@
     }
 
     async function collectPyrusProjectPayloadWithExpansion() {
-        let payload = collectPyrusProjectPayload();
-        if (payload.plan) {
-            return payload;
-        }
-
-        const expandedSetup = expandPyrusGroupByTitle("сетап");
-        if (expandedSetup > 0) {
-            await wait(220);
-            payload = collectPyrusProjectPayload();
-            if (payload.plan) {
-                return payload;
-            }
-        }
+        expandPyrusGroupByTitle("сетап");
+        await wait(220);
 
         const expandedInsideSetup = expandCollapsedGroupsInsideSetup();
         if (expandedInsideSetup > 0) {
             await wait(260);
-            payload = collectPyrusProjectPayload();
-            if (payload.plan) {
-                return payload;
-            }
         }
 
         const expandedSecondPass = expandCollapsedGroupsInsideSetup();
         if (expandedSecondPass > 0) {
             await wait(320);
-            payload = collectPyrusProjectPayload();
         }
 
-        return payload;
+        return collectPyrusProjectPayload();
     }
 
     function hasCleanerAutoFillRequest() {
@@ -1047,9 +1050,9 @@
             return;
         }
 
-        const missing = collectMissingProjectPayloadFields(payload);
-        if (missing.length > 0) {
-            alert(`Форма заполнена частично. Не найдены поля: ${missing.join(", ")}.`);
+        const notFoundByXPath = payload.notFoundByXPath;
+        if (notFoundByXPath && notFoundByXPath.length > 0) {
+            alert(`Не удалось найти по XPath: ${notFoundByXPath.join(", ")}. Остальные поля заполнены.`);
         }
     }
 
@@ -1195,60 +1198,78 @@
         return applied;
     }
 
+    const PYRUS_FIELD_LABELS = {
+        projectName: "Название проекта",
+        projectId: "ProjectID",
+        plan: "N",
+        dbName: "База ОД"
+    };
+
+    function getValueByXPath(xpath) {
+        if (!xpath || typeof xpath !== "string") {
+            return { value: "", found: false };
+        }
+        try {
+            const result = document.evaluate(
+                xpath,
+                document,
+                null,
+                XPathResult.FIRST_ORDERED_NODE_TYPE,
+                null
+            );
+            const node = result.singleNodeValue;
+            if (!node) {
+                return { value: "", found: false };
+            }
+            const value = normalizeSingleLine(readNodeCandidateValue(node) || node.innerText || node.textContent || "");
+            return { value, found: true };
+        } catch (error) {
+            console.warn("[QGA] Ошибка XPath:", xpath, error);
+            return { value: "", found: false };
+        }
+    }
+
     function collectPyrusProjectPayload() {
-        const projectName = cleanupProjectName(extractPyrusProjectName());
-        const formFieldMap = collectPyrusFormFieldMap();
+        const notFoundByXPath = [];
 
-        const projectIdFromStructuredFields = findPyrusFormFieldValue(
-            formFieldMap,
-            ["Номер в панели PR", "Номер в панели ПР", "Номер панели PR", "Номер панели ПР", "Panel PR", "PR", "ПР"],
-            (value) => /\d{4,}/.test(value)
-        );
-        const planFromStructuredFields = findPyrusFormFieldValue(
-            formFieldMap,
-            ["N", "Н", "№", "План (N)", "План N", "План Н", "План"],
-            (value) => /\d{1,7}/.test(value)
-        );
-        const dbNameFromStructuredFields = findPyrusFormFieldValue(
-            formFieldMap,
-            ["Sawtooth", "База ОД"],
-            (value) => /[A-Za-zА-Яа-я0-9]/.test(value)
-        );
+        const projectNameResult = getValueByXPath(PYRUS_FIELD_XPATHS.projectName);
+        const projectName = cleanupProjectName(projectNameResult.value);
+        if (!projectNameResult.found || !projectName) {
+            notFoundByXPath.push(PYRUS_FIELD_LABELS.projectName);
+        }
 
-        const projectId = sanitizeProjectId(
-            projectIdFromStructuredFields || findFieldValueByLabels(
-                ["Номер в панели PR", "Номер в панели ПР", "Номер панели PR", "Номер панели ПР", "Номер в панели", "Panel PR", "PR", "ПР"],
-                (value) => /\d{4,}/.test(value)
-            )
-        );
-        const plan = sanitizePlan(
-            planFromStructuredFields || findFieldValueByLabels(
-                ["N", "Н", "№", "План (N)", "План N", "План Н", "План"],
-                (value) => /\d{1,7}/.test(value)
-            )
-        );
-        const dbName = sanitizeDbName(
-            dbNameFromStructuredFields || findFieldValueByLabels(
-                ["Sawtooth", "База ОД"],
-                (value) => /[A-Za-zА-Яа-я0-9]/.test(value)
-            )
-        );
+        const projectIdResult = getValueByXPath(PYRUS_FIELD_XPATHS.projectId);
+        const projectId = sanitizeProjectId(projectIdResult.value);
+        if (!projectIdResult.found || !projectId) {
+            notFoundByXPath.push(PYRUS_FIELD_LABELS.projectId);
+        }
 
-        console.info("[QGA] Pyrus-поля:", {
-            detectedFields: Array.from(formFieldMap.entries()).map(([label, value]) => `${label} => ${value}`),
-            projectIdFromStructuredFields,
-            planFromStructuredFields,
-            dbNameFromStructuredFields,
+        const planResult = getValueByXPath(PYRUS_FIELD_XPATHS.plan);
+        const plan = sanitizePlan(planResult.value);
+        if (!planResult.found || !plan) {
+            notFoundByXPath.push(PYRUS_FIELD_LABELS.plan);
+        }
+
+        const dbNameResult = getValueByXPath(PYRUS_FIELD_XPATHS.dbName);
+        const dbName = sanitizeDbName(dbNameResult.value);
+        if (!dbNameResult.found || !dbName) {
+            notFoundByXPath.push(PYRUS_FIELD_LABELS.dbName);
+        }
+
+        console.info("[QGA] Pyrus-поля (XPath):", {
+            projectName,
             projectId,
             plan,
-            dbName
+            dbName,
+            notFoundByXPath
         });
 
         return {
             projectName,
             projectId,
             plan,
-            dbName
+            dbName,
+            notFoundByXPath
         };
     }
 
