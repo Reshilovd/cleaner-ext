@@ -2517,6 +2517,17 @@
             .qga-verify-row-incorrect:hover {
                 background-color: #fecaca !important;
             }
+            td[role='gridcell']:has(.qga-inc-icon) {
+                position: relative;
+            }
+            .qga-inc-icon {
+                position: absolute;
+                right: 4px;
+                top: 50%;
+                transform: translateY(-50%);
+                width: 18px;
+                height: 18px;
+            }
             .qga-verify-row-reason-2 {
                 background-color: #f3e8ff !important;
             }
@@ -2824,6 +2835,8 @@
         const verifyIncorrectSet = projectId ? getVerifyIncorrectIdsSetForProject(projectId) : new Set();
         const ratingReasonMap = projectId ? getRatingReasonCodesForProject(projectId) : {};
         const rows = gridRoot.querySelectorAll("tr.k-master-row");
+        const incIconUrl = chrome.runtime.getURL("icons/inc.png");
+
         for (const row of rows) {
             if (!(row instanceof HTMLTableRowElement)) continue;
             row.classList.remove("qga-verify-row-hidden");
@@ -2846,6 +2859,23 @@
             const rowClass = REASON_CODE_ROW_CLASS[topCode];
             if (rowClass) {
                 row.classList.add(rowClass);
+            }
+
+            const existingIcon = row.querySelector("img.qga-inc-icon");
+            if (topCode === 1) {
+                if (!existingIcon) {
+                    const firstCell = row.querySelector("td[role='gridcell']");
+                    if (firstCell) {
+                        const icon = document.createElement("img");
+                        icon.src = incIconUrl;
+                        icon.className = "qga-inc-icon";
+                        icon.alt = "Некорректный ответ";
+                        icon.title = "Некорректный ответ";
+                        firstCell.appendChild(icon);
+                    }
+                }
+            } else if (existingIcon) {
+                existingIcon.remove();
             }
 
         }

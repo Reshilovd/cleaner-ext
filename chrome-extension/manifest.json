@@ -37,5 +37,11 @@
     "32": "icons/logo.png",
     "48": "icons/logo.png",
     "128": "icons/logo.png"
-  }
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["icons/inc.png"],
+      "matches": ["https://clr.env7.biz/*", "http://clr.env7.biz/*"]
+    }
+  ]
 }
