@@ -40,7 +40,7 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["icons/inc.png", "icons/speed.png", "icons/manual.png"],
+      "resources": ["icons/inc.png", "icons/speed.png", "icons/manual.png", "icons/table.png"],
       "matches": ["https://clr.env7.biz/*", "http://clr.env7.biz/*"]
     }
   ]

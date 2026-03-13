@@ -2845,6 +2845,7 @@
         const rows = gridRoot.querySelectorAll("tr.k-master-row");
         const REASON_ICON_CONFIG = {
             1: { url: chrome.runtime.getURL("icons/inc.png"), alt: "Некорректный ответ" },
+            3: { url: chrome.runtime.getURL("icons/table.png"), alt: "Одинаковые табличные ответы" },
             4: { url: chrome.runtime.getURL("icons/speed.png"), alt: "Спидстер" },
             6: { url: chrome.runtime.getURL("icons/manual.png"), alt: "Ручная чистка" }
         };
