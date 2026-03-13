@@ -2502,14 +2502,6 @@
             .qga-verify-row-in-manual:hover {
                 background-color: #fef08a !important;
             }
-            .qga-verify-question-highlight-incorrect {
-                background-color: #fee2e2 !important;
-                outline: 2px solid #f87171 !important;
-                outline-offset: 2px !important;
-            }
-            .qga-verify-question-highlight-incorrect:hover {
-                background-color: #fecaca !important;
-            }
             .qga-verify-modal--row-incorrect .qga-verify-modal__body,
             .qga-verify-modal--row-incorrect .qga-verify-modal__footer {
                 background-color: #fee2e2 !important;
@@ -3879,16 +3871,6 @@
         );
     }
 
-    function highlightVerifyQuestion(highlight) {
-        const el = getVerifyQuestionElement();
-        if (!el) return;
-        if (highlight) {
-            el.classList.add("qga-verify-question-highlight-incorrect");
-        } else {
-            el.classList.remove("qga-verify-question-highlight-incorrect");
-        }
-    }
-
     function showVerifyRespondentModal(respondentId, answers, context, rowState) {
         let modal = document.querySelector(".qga-verify-modal");
         if (!modal) {
@@ -3909,7 +3891,6 @@
             if (closeButton) {
                 closeButton.addEventListener("click", () => {
                     modal.style.display = "none";
-                    highlightVerifyQuestion(false);
                 });
             }
 
@@ -3917,7 +3898,6 @@
                 if (modal.style.display !== "flex") return;
                 if (modal.contains(e.target)) return;
                 modal.style.display = "none";
-                highlightVerifyQuestion(false);
             });
 
             document.documentElement.appendChild(modal);
@@ -3953,7 +3933,6 @@
         modal.classList.remove("qga-verify-modal--row-incorrect");
         if (isIncorrectFromRating) {
             modal.classList.add("qga-verify-modal--row-incorrect");
-            highlightVerifyQuestion(true);
         }
 
         if (listNode) {
@@ -4048,7 +4027,6 @@
             if (closeButton) {
                 closeButton.addEventListener("click", () => {
                     modal.style.display = "none";
-                    highlightVerifyQuestion(false);
                 });
             }
 
@@ -4056,7 +4034,6 @@
                 if (modal.style.display !== "flex") return;
                 if (modal.contains(e.target)) return;
                 modal.style.display = "none";
-                highlightVerifyQuestion(false);
             });
 
             document.documentElement.appendChild(modal);
@@ -4080,9 +4057,6 @@
         const ratingIncorrectSetCandidates = projectIdCandidates ? getRatingIncorrectIdsSetForProject(projectIdCandidates) : new Set();
         const isIncorrectId = (id) => verifyIncorrectSetCandidates.has(String(id).trim()) || ratingIncorrectSetCandidates.has(String(id).trim());
         const hasAnyIncorrectFromRating = respondentIds.some(isIncorrectId);
-        if (hasAnyIncorrectFromRating) {
-            highlightVerifyQuestion(true);
-        }
 
         modal.classList.remove("qga-verify-modal--in-manual");
         modal.classList.add("qga-verify-modal--candidates");
