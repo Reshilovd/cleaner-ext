@@ -22,11 +22,11 @@
     const PYRUS_QUICK_FILL_WRAPPER_CLASS = "qga-pyrus-quick-fill-wrapper";
     const CLEANER_AUTO_FILL_QUERY_KEY = "qga_autofill";
 
-    const PYRUS_FIELD_XPATHS = {
-        projectName: "/html/body/div[1]/div[1]/div[2]/div[3]/div[2]/div[2]/div[1]/aside/div[1]/div/div/div[7]/div[1]/div/div/div/div[2]/div/div/div[1]/div/div/div",
-        projectId: "/html/body/div/div[1]/div[2]/div[3]/div[2]/div[2]/div[1]/aside/div[1]/div/div/div[13]/div/div/div[2]/div[2]/div/div[4]/div/div/div/div[3]/div/div/div[1]/div/div/div",
-        plan: "/html/body/div/div[1]/div[2]/div[3]/div[2]/div[2]/div[1]/aside/div[1]/div/div/div[13]/div/div/div[2]/div[2]/div/div[5]/div/div/div/div[3]/div/div/div[1]/div/div/div",
-        dbName: "/html/body/div[1]/div[1]/div[2]/div[3]/div[2]/div[2]/div[1]/aside/div[1]/div/div/div[17]/div/div/div[2]/div[2]/div/div[6]/div/div/div/div[3]/div/div/div[1]/div/div/div"
+    const PYRUS_FIELD_LABEL_ALIASES = {
+        projectId: ["номер в панели pr", "номер в панели", "номер панели pr", "project id панели"],
+        plan: ["n"],
+        projectName: ["название проекта", "наименование проекта", "project name"],
+        dbName: ["sawtooth", "база од", "dbname"]
     };
 
     const MANUAL_BFRIDS_STORAGE_KEY = "__qga_manual_bfrids_v1__";
@@ -879,7 +879,7 @@
         const hasAnyValue = Boolean(payload.projectName || payload.projectId || payload.plan || payload.dbName);
         if (!hasAnyValue) {
             const notFoundMsg = notFoundByXPath.length > 0
-                ? ` Не удалось найти по XPath: ${notFoundByXPath.join(", ")}.`
+                ? ` Не удалось найти на странице: ${notFoundByXPath.join(", ")}.`
                 : "";
             return {
                 ok: false,
@@ -1052,7 +1052,7 @@
 
         const notFoundByXPath = payload.notFoundByXPath;
         if (notFoundByXPath && notFoundByXPath.length > 0) {
-            alert(`Не удалось найти по XPath: ${notFoundByXPath.join(", ")}. Остальные поля заполнены.`);
+            alert(`Не удалось найти на странице: ${notFoundByXPath.join(", ")}. Остальные поля заполнены.`);
         }
     }
 
@@ -1205,58 +1205,45 @@
         dbName: "База ОД"
     };
 
-    function getValueByXPath(xpath) {
-        if (!xpath || typeof xpath !== "string") {
-            return { value: "", found: false };
-        }
-        try {
-            const result = document.evaluate(
-                xpath,
-                document,
-                null,
-                XPathResult.FIRST_ORDERED_NODE_TYPE,
-                null
-            );
-            const node = result.singleNodeValue;
-            if (!node) {
-                return { value: "", found: false };
-            }
-            const value = normalizeSingleLine(readNodeCandidateValue(node) || node.innerText || node.textContent || "");
-            return { value, found: true };
-        } catch (error) {
-            console.warn("[QGA] Ошибка XPath:", xpath, error);
-            return { value: "", found: false };
-        }
-    }
-
     function collectPyrusProjectPayload() {
         const notFoundByXPath = [];
+        const fieldMap = collectPyrusFormFieldMap();
 
-        const projectNameResult = getValueByXPath(PYRUS_FIELD_XPATHS.projectName);
-        const projectName = cleanupProjectName(projectNameResult.value);
-        if (!projectNameResult.found || !projectName) {
-            notFoundByXPath.push(PYRUS_FIELD_LABELS.projectName);
+        let projectId = sanitizeProjectId(
+            findPyrusFormFieldValue(fieldMap, PYRUS_FIELD_LABEL_ALIASES.projectId, (v) => /\d{4,}/.test(v))
+        );
+        if (!projectId) {
+            projectId = extractProjectIdFromPyrusLinks(fieldMap);
         }
-
-        const projectIdResult = getValueByXPath(PYRUS_FIELD_XPATHS.projectId);
-        const projectId = sanitizeProjectId(projectIdResult.value);
-        if (!projectIdResult.found || !projectId) {
+        if (!projectId) {
             notFoundByXPath.push(PYRUS_FIELD_LABELS.projectId);
         }
 
-        const planResult = getValueByXPath(PYRUS_FIELD_XPATHS.plan);
-        const plan = sanitizePlan(planResult.value);
-        if (!planResult.found || !plan) {
+        const plan = sanitizePlan(
+            findPyrusFormFieldValue(fieldMap, PYRUS_FIELD_LABEL_ALIASES.plan, (v) => /^\d{1,7}$/.test(v.trim()))
+        );
+        if (!plan) {
             notFoundByXPath.push(PYRUS_FIELD_LABELS.plan);
         }
 
-        const dbNameResult = getValueByXPath(PYRUS_FIELD_XPATHS.dbName);
-        const dbName = sanitizeDbName(dbNameResult.value);
-        if (!dbNameResult.found || !dbName) {
+        let projectName = cleanupProjectName(
+            findPyrusFormFieldValue(fieldMap, PYRUS_FIELD_LABEL_ALIASES.projectName)
+        );
+        if (!projectName) {
+            projectName = cleanupProjectName(extractPyrusProjectName());
+        }
+        if (!projectName) {
+            notFoundByXPath.push(PYRUS_FIELD_LABELS.projectName);
+        }
+
+        const dbName = sanitizeDbName(
+            findPyrusFormFieldValue(fieldMap, PYRUS_FIELD_LABEL_ALIASES.dbName)
+        );
+        if (!dbName) {
             notFoundByXPath.push(PYRUS_FIELD_LABELS.dbName);
         }
 
-        console.info("[QGA] Pyrus-поля (XPath):", {
+        console.info("[QGA] Pyrus-поля (по меткам):", {
             projectName,
             projectId,
             plan,
@@ -1271,6 +1258,35 @@
             dbName,
             notFoundByXPath
         };
+    }
+
+    function extractProjectIdFromPyrusLinks(fieldMap) {
+        const linkAliases = ["ссылка на pr", "ссылка на чистилку"];
+        const idPattern = /(?:panelrider\.com\/projects\/managements\/|Project\/Edit\/)(\d{4,})/;
+
+        for (const alias of linkAliases) {
+            const url = findPyrusFormFieldValue(fieldMap, [alias]);
+            if (!url) {
+                continue;
+            }
+            const match = url.match(idPattern);
+            if (match) {
+                return match[1];
+            }
+        }
+
+        const links = document.querySelectorAll(
+            "a[href*='panelrider.com/projects/managements/'], a[href*='Project/Edit/']"
+        );
+        for (const link of links) {
+            const href = link.getAttribute("href") || "";
+            const match = href.match(idPattern);
+            if (match) {
+                return match[1];
+            }
+        }
+
+        return "";
     }
 
     function extractPyrusProjectName() {
