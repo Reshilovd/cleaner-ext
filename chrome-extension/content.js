@@ -2375,7 +2375,7 @@
                 border-top: 1px solid #e5e7eb;
             }
             .qga-verify-modal__item--in-manual {
-                background: #ecfdf5;
+                background: #fef9c3;
                 margin-left: -8px;
                 margin-right: -8px;
                 padding-left: 8px;
@@ -2385,7 +2385,7 @@
                 border-radius: 4px;
             }
             .qga-verify-modal__item--in-manual .qga-verify-modal__respondent-header {
-                background: #ecfdf5;
+                background: #fef9c3;
             }
             .qga-verify-modal__respondent-header {
                 position: sticky;
@@ -2432,7 +2432,7 @@
             }
             .qga-verify-modal--in-manual .qga-verify-modal__body,
             .qga-verify-modal--in-manual .qga-verify-modal__footer {
-                background: #ecfdf5;
+                background: #fef9c3;
             }
             .qga-verify-modal__item--incorrect .qga-verify-modal__respondent-header,
             .qga-verify-modal__item--incorrect {
@@ -2447,7 +2447,7 @@
             }
             .qga-verify-modal__item--in-manual .qga-verify-modal__respondent-header,
             .qga-verify-modal__item--in-manual {
-                background: #fefce8 !important;
+                background: #fef9c3 !important;
             }
             .qga-verify-modal__item--in-manual .qga-verify-modal__respondent-header {
                 color: #854d0e !important;
@@ -2459,7 +2459,10 @@
                 background-color: #fecaca !important;
             }
             .qga-verify-row-in-manual {
-                background-color: #fefce8 !important;
+                background-color: #fef9c3 !important;
+            }
+            .qga-verify-row-in-manual:hover {
+                background-color: #fef08a !important;
             }
             .qga-verify-question-highlight-incorrect {
                 background-color: #fee2e2 !important;
