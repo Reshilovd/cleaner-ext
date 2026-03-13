@@ -2298,6 +2298,11 @@
                 gap: 6px;
                 white-space: nowrap;
             }
+            @property --qga-scrollbar-thumb {
+                syntax: "<color>";
+                initial-value: rgba(156, 163, 175, 0.25);
+                inherits: true;
+            }
             .qga-verify-modal {
                 position: fixed;
                 right: 12px;
@@ -2343,6 +2348,22 @@
             .qga-verify-modal__body {
                 padding: 6px 8px;
                 overflow: auto;
+                --qga-scrollbar-thumb: rgba(156, 163, 175, 0.25);
+                transition: --qga-scrollbar-thumb 0.3s ease-in-out;
+            }
+            .qga-verify-modal__body--scrollbar-hover {
+                --qga-scrollbar-thumb: #9ca3af;
+            }
+            .qga-verify-modal__body::-webkit-scrollbar {
+                width: 6px;
+                height: 6px;
+            }
+            .qga-verify-modal__body::-webkit-scrollbar-track {
+                background: transparent;
+            }
+            .qga-verify-modal__body::-webkit-scrollbar-thumb {
+                background: var(--qga-scrollbar-thumb);
+                border-radius: 3px;
             }
             .qga-verify-modal--candidates .qga-verify-modal__body {
                 padding-top: 0;
@@ -3883,6 +3904,19 @@
             });
 
             document.documentElement.appendChild(modal);
+
+            const bodyEl = modal.querySelector(".qga-verify-modal__body");
+            if (bodyEl) {
+                const scrollbarZone = 20;
+                bodyEl.addEventListener("mousemove", (e) => {
+                    const rect = bodyEl.getBoundingClientRect();
+                    const isNearScrollbar = (rect.right - e.clientX) <= scrollbarZone;
+                    bodyEl.classList.toggle("qga-verify-modal__body--scrollbar-hover", isNearScrollbar);
+                });
+                bodyEl.addEventListener("mouseleave", () => {
+                    bodyEl.classList.remove("qga-verify-modal__body--scrollbar-hover");
+                });
+            }
         }
 
         const titleNode = modal.querySelector(".qga-verify-modal__title");
@@ -4009,6 +4043,19 @@
             });
 
             document.documentElement.appendChild(modal);
+
+            const bodyEl = modal.querySelector(".qga-verify-modal__body");
+            if (bodyEl) {
+                const scrollbarZone = 20;
+                bodyEl.addEventListener("mousemove", (e) => {
+                    const rect = bodyEl.getBoundingClientRect();
+                    const isNearScrollbar = (rect.right - e.clientX) <= scrollbarZone;
+                    bodyEl.classList.toggle("qga-verify-modal__body--scrollbar-hover", isNearScrollbar);
+                });
+                bodyEl.addEventListener("mouseleave", () => {
+                    bodyEl.classList.remove("qga-verify-modal__body--scrollbar-hover");
+                });
+            }
         }
 
         const projectIdCandidates = getProjectIdForVerify();
