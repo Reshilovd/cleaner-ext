@@ -1,13 +1,13 @@
 {
   "manifest_version": 3,
-  "name": "Cleaner-utils",
-  "description": "Ищет дубли в OpenEnds, массово группирует их и переносит данные проекта из Pyrus в Cleaner.",
+  "name": "Cleaner Assistant",
+  "description": "Группировка OpenEnds, проверка OPENEND-OB с ручной чисткой и перенос данных проекта из Pyrus в Cleaner.",
   "version": "1.0.0",
   "permissions": [
     "storage"
   ],
   "action": {
-    "default_title": "Cleaner-utils",
+    "default_title": "Cleaner Assistant",
     "default_icon": {
       "16": "icons/logo.png",
       "32": "icons/logo.png",
