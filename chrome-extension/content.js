@@ -3446,7 +3446,7 @@
             stored && typeof stored.bfrids === "string" ? stored.bfrids : "";
 
         let verificationToken =
-            stored && typeof stored.token === "string" ? stored.token : "" ||
+            (stored && typeof stored.token === "string" ? stored.token : "") ||
             findVerificationTokenInDocument(document);
 
         if (!verificationToken) {
