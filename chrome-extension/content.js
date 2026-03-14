@@ -233,13 +233,14 @@
                     return;
                 }
 
+                const rowState = getVerifyRowIncorrectPostpone(gridRoot, row);
+
                 try {
-                    const ok = await ensureVerifyRespondentIndexLoaded();
+                    const ok = await ensureVerifyRespondentIndexLoaded(button);
                     if (!ok) {
-                        const message =
-                            state.verifyRespondentIndexError ||
-                            "Не удалось загрузить выгрузку OpenEnds. Подробности в консоли.";
-                        alert(message);
+                        if (state.verifyRespondentIndexError) {
+                            console.warn("[QGA]", state.verifyRespondentIndexError);
+                        }
                         return;
                     }
 
@@ -249,7 +250,7 @@
                         return;
                     }
 
-                    const uniqueIds = getRespondentIdsForVerifyRow(row);
+                    const uniqueIds = getRespondentIdsForContext(context);
 
                     if (uniqueIds.length === 0) {
                         alert(
@@ -260,7 +261,6 @@
                     }
 
                     applyVerifyRowVisibility(gridRoot);
-                    const rowState = getVerifyRowIncorrectPostpone(gridRoot, row);
 
                     if (uniqueIds.length === 1) {
                         const respondentId = uniqueIds[0];
@@ -313,7 +313,7 @@
         const extraButton = document.createElement("button");
         extraButton.type = button.type || "button";
         extraButton.textContent = button.textContent || "Проверить страницу";
-        extraButton.className = button.className || "";
+        extraButton.className = (button.className || "").trim();
 
         extraButton.addEventListener("click", async () => {
             if (state.verifyPendingManualBfrids && state.verifyPendingManualBfrids.size > 0) {
@@ -2425,9 +2425,8 @@
         return out;
     }
 
-    /** Возвращает массив respondent IDs для строки по индексу (или пустой массив). */
-    function getRespondentIdsForVerifyRow(row) {
-        const context = resolveVerifyRowContext(row);
+    /** Возвращает массив respondent IDs по контексту строки (после загрузки индекса). */
+    function getRespondentIdsForContext(context) {
         if (!context || (!context.openEndId && !context.valueText)) return [];
         const respondentIdsByOpenEndId = state.verifyRespondentIdsByOpenEndId;
         const idsByQuestionAndValue = state.verifyRespondentIdsByQuestionAndValue;
@@ -2541,6 +2540,12 @@
         return Array.from(new Set(respondentIds.map((id) => String(id))));
     }
 
+    /** Возвращает массив respondent IDs для строки (читает контекст из DOM строки). */
+    function getRespondentIdsForVerifyRow(row) {
+        const context = resolveVerifyRowContext(row);
+        return getRespondentIdsForContext(context);
+    }
+
     /**
      * Подсвечивает строки, где N=1, цветом по приоритетному ReasonCode:
      * 1 — некорректный (красный), 2 — спорное интервью (фиолетовый),
@@ -2650,13 +2655,15 @@
         }
     }
 
-    async function ensureVerifyRespondentIndexLoaded() {
+    /**
+     * @param {HTMLElement | null} [triggerButton] — кнопка, по которой кликнули (например «Посмотреть»); на ней показывается анимация загрузки
+     */
+    async function ensureVerifyRespondentIndexLoaded(triggerButton) {
         if (state.verifyRespondentIndexLoaded) {
             return true;
         }
 
         if (state.verifyRespondentIndexLoading) {
-            alert("Идёт загрузка выгрузки OpenEnds, попробуйте ещё раз через несколько секунд.");
             return false;
         }
 
@@ -2670,6 +2677,9 @@
 
         state.verifyRespondentIndexLoading = true;
         state.verifyRespondentIndexError = null;
+        if (triggerButton) {
+            triggerButton.disabled = true;
+        }
 
         try {
             const url = `/lk/OpenEnds2/DownloadOpenEnds/${encodeURIComponent(String(projectId))}`;
@@ -2703,6 +2713,9 @@
             return false;
         } finally {
             state.verifyRespondentIndexLoading = false;
+            if (triggerButton) {
+                triggerButton.disabled = false;
+            }
         }
     }
 
@@ -2718,10 +2731,9 @@
         }
         const ok = await ensureVerifyRespondentIndexLoaded();
         if (!ok) {
-            const message =
-                state.verifyRespondentIndexError ||
-                "Не удалось загрузить выгрузку OpenEnds. Подробности в консоли.";
-            alert(message);
+            if (state.verifyRespondentIndexError) {
+                console.warn("[QGA]", state.verifyRespondentIndexError);
+            }
             return;
         }
         const normalized = idsArray.map((id) => String(id).trim()).filter(Boolean);
@@ -2999,6 +3011,14 @@
         return set;
     }
 
+    /** Есть ли сохранённый верификационный токен для ручной чистки по проекту (получен после открытия вкладки «Ручная чистка» и сохранения). */
+    function hasVerificationTokenForProject(projectId) {
+        if (!projectId) return false;
+        const key = String(projectId);
+        const entry = manualApiState && manualApiState[key];
+        return !!(entry && typeof entry.token === "string" && entry.token.trim() !== "");
+    }
+
     /**
      * Записывает один и тот же список bfrid в оба хранилища (manualBfridsState и manualApiState.bfrids),
      * чтобы кол-во и состав всегда совпадали.
@@ -3035,6 +3055,8 @@
         if (!textarea) {
             return;
         }
+        manualApiState = loadManualApiState();
+        manualBfridsState = loadManualBfridsState();
         const raw = (textarea.value || "").trim();
         const idsInTextarea = raw
             .split(/[\s,;]+/)
@@ -3099,6 +3121,20 @@
         };
 
         attach();
+
+        // Синхронизация в localStorage при нажатии «Сохранить» (отправка формы), даже если пользователь не вводил ничего в поле Bfrids
+        if (!document.body.dataset.qgaManualSubmitSyncAttached) {
+            document.body.dataset.qgaManualSubmitSyncAttached = "1";
+            document.body.addEventListener("submit", (e) => {
+                const form = e.target;
+                if (!form || form.tagName !== "FORM") return;
+                const textarea = form.querySelector("#Bfrids");
+                if (!textarea) return;
+                const pid = getProjectIdForVerify();
+                if (!pid) return;
+                syncManualBfridsFromTextarea(pid);
+            }, true);
+        }
 
         let manualAttachTimer = null;
         const observer = new MutationObserver(() => {
@@ -3916,6 +3952,7 @@
         manualApiState = loadManualApiState();
         const alreadyInManualSet = getManualBfridsSetForProject(projectIdForModal);
         const isAlreadyInManual = alreadyInManualSet.has(respondentIdStr);
+        const hasManualToken = hasVerificationTokenForProject(projectIdForModal);
 
         modal.classList.remove("qga-verify-modal--candidates");
         if (isAlreadyInManual) {
@@ -3934,8 +3971,8 @@
                 : "Добавить в ручную чистку (по нажатию «Проверить страницу»)";
             manualCheckbox.dataset.respondentId = respondentIdStr;
             manualCheckbox.checked = isAlreadyInManual || state.verifyPendingManualBfrids.has(respondentIdStr);
-            manualCheckbox.disabled = isAlreadyInManual || isIncorrectFromRating;
-            if (!isAlreadyInManual && !isIncorrectFromRating) {
+            manualCheckbox.disabled = isAlreadyInManual || isIncorrectFromRating || !hasManualToken;
+            if (!isAlreadyInManual && !isIncorrectFromRating && hasManualToken) {
                 manualCheckbox.addEventListener("change", () => {
                     const id = manualCheckbox.dataset.respondentId;
                     if (!id) return;
@@ -3951,6 +3988,15 @@
             manualLabel.appendChild(manualCheckbox);
             manualLabel.appendChild(document.createTextNode(" В ручную чистку"));
             footerNode.appendChild(manualLabel);
+            if (!hasManualToken) {
+                const manualHint = document.createElement("div");
+                manualHint.className = "qga-verify-modal__manual-hint";
+                manualHint.style.marginTop = "6px";
+                manualHint.style.fontSize = "12px";
+                manualHint.style.color = "#6b7280";
+                manualHint.textContent = "Чтобы добавить в ручную чистку, откройте вкладку «Ручная чистка» этого проекта, нажмите «Добавить брак» и сохраните.";
+                footerNode.appendChild(manualHint);
+            }
         }
 
         modal.style.display = "flex";
@@ -4023,6 +4069,20 @@
             manualBfridsState = loadManualBfridsState();
             manualApiState = loadManualApiState();
             const alreadyInManualSet = getManualBfridsSetForProject(projectIdCandidates);
+            const hasManualTokenCandidates = hasVerificationTokenForProject(projectIdCandidates);
+
+            if (!hasManualTokenCandidates && bodyNode) {
+                const manualHint = document.createElement("div");
+                manualHint.className = "qga-verify-modal__manual-hint";
+                manualHint.style.padding = "8px 12px";
+                manualHint.style.marginBottom = "8px";
+                manualHint.style.fontSize = "12px";
+                manualHint.style.color = "#6b7280";
+                manualHint.style.background = "#f3f4f6";
+                manualHint.style.borderRadius = "4px";
+                manualHint.textContent = "Чтобы добавлять респондентов в ручную чистку, откройте вкладку «Ручная чистка» этого проекта, нажмите «Добавить брак» и сохраните.";
+                bodyNode.insertBefore(manualHint, listNode);
+            }
 
             const REASON_CODE_BG_COLOR = {
                 1: "#fee2e2",
@@ -4094,8 +4154,8 @@
                     : "Добавить в ручную чистку (по нажатию «Проверить страницу»)";
                 manualCheckbox.dataset.respondentId = respondentIdStr;
                 manualCheckbox.checked = isAlreadyInManual || state.verifyPendingManualBfrids.has(respondentIdStr);
-                manualCheckbox.disabled = isAlreadyInManual || isIncorrectFromRating;
-                if (!isAlreadyInManual && !isIncorrectFromRating) {
+                manualCheckbox.disabled = isAlreadyInManual || isIncorrectFromRating || !hasManualTokenCandidates;
+                if (!isAlreadyInManual && !isIncorrectFromRating && hasManualTokenCandidates) {
                     manualCheckbox.addEventListener("change", () => {
                         const id = manualCheckbox.dataset.respondentId;
                         if (!id) return;
