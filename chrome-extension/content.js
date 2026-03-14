@@ -2951,17 +2951,15 @@
         if (!projectId || !Array.isArray(bfrids) || bfrids.length === 0) {
             return;
         }
-        const key = String(projectId);
-        const current = Array.isArray(manualBfridsState[key]) ? manualBfridsState[key] : [];
-        const set = new Set(current.map((x) => String(x).trim()).filter(Boolean));
+        const merged = Array.from(getManualBfridsSetForProject(projectId));
         for (const id of bfrids) {
             const normalized = String(id).trim();
             if (normalized) {
-                set.add(normalized);
+                merged.push(normalized);
             }
         }
-        manualBfridsState[key] = Array.from(set);
-        saveManualBfridsState(manualBfridsState);
+        const uniq = Array.from(new Set(merged));
+        syncManualBfridsStores(projectId, uniq);
     }
 
     function consumeManualBfridsForProject(projectId) {
@@ -3002,6 +3000,29 @@
     }
 
     /**
+     * Записывает один и тот же список bfrid в оба хранилища (manualBfridsState и manualApiState.bfrids),
+     * чтобы кол-во и состав всегда совпадали.
+     */
+    function syncManualBfridsStores(projectId, bfridsArray) {
+        if (!projectId || !Array.isArray(bfridsArray)) {
+            return;
+        }
+        const key = String(projectId);
+        const list = bfridsArray.map((x) => String(x).trim()).filter(Boolean);
+
+        manualBfridsState[key] = list.slice();
+        saveManualBfridsState(manualBfridsState);
+
+        const prev =
+            manualApiState && typeof manualApiState[key] === "object" ? manualApiState[key] : {};
+        manualApiState[key] = {
+            token: prev.token || "",
+            bfrids: list.join("\n")
+        };
+        saveManualApiState(manualApiState);
+    }
+
+    /**
      * Синхронизирует локальное хранилище (manualApiState и manualBfridsState)
      * с текущим содержимым поля ручной чистки (#Bfrids).
      * Вызывается при ручном удалении/изменении айдишек в textarea.
@@ -3031,17 +3052,8 @@
         };
         saveManualApiState(manualApiState);
 
-        const currentBuffer = Array.isArray(manualBfridsState[key]) ? manualBfridsState[key] : [];
-        if (currentBuffer.length > 0) {
-            const textareaSet = new Set(idsInTextarea);
-            const stillPresent = currentBuffer.filter((id) => textareaSet.has(String(id).trim()));
-            if (stillPresent.length === 0) {
-                delete manualBfridsState[key];
-            } else {
-                manualBfridsState[key] = stillPresent;
-            }
-            saveManualBfridsState(manualBfridsState);
-        }
+        manualBfridsState[key] = idsInTextarea.slice();
+        saveManualBfridsState(manualBfridsState);
     }
 
     function attachManualBfridsTextareaSync(projectId) {
@@ -3119,22 +3131,22 @@
             existingSet.add(String(id).trim());
         }
 
-        const merged = Array.from(existingSet).join("\n");
+        const mergedArray = Array.from(existingSet);
+        const merged = mergedArray.join("\n");
         textarea.value = merged;
 
-        // Сохраняем актуальное состояние Bfrids и токен для этого проекта,
-        // чтобы затем вызывать API с VerifyMain без дополнительных запросов.
         try {
             const token = findVerificationTokenInDocument(document);
             const key = String(projectId);
             const prev =
                 manualApiState && typeof manualApiState[key] === "object" ? manualApiState[key] : {};
-
             manualApiState[key] = {
                 token: token || prev.token || "",
                 bfrids: merged
             };
             saveManualApiState(manualApiState);
+            manualBfridsState[key] = mergedArray.slice();
+            saveManualBfridsState(manualBfridsState);
         } catch (error) {
             console.warn("[QGA] Не удалось сохранить состояние API ручной чистки:", error);
         }
@@ -3217,21 +3229,20 @@
                 return;
             }
 
-            // Успешно сохранили на сервере: обновляем локальный снимок,
-            // чтобы в следующих запросах не затирать уже добавленные id
-            // и не слать повторно одни и те же bfrid.
             try {
                 const key = String(projectId);
                 const prev =
                     manualApiState && typeof manualApiState[key] === "object"
                         ? manualApiState[key]
                         : {};
-
                 manualApiState[key] = {
                     token: verificationToken || prev.token || "",
                     bfrids: mergedBfrids
                 };
                 saveManualApiState(manualApiState);
+                const mergedArray = mergedBfrids.split(/[\s,;]+/).map((x) => x.trim()).filter(Boolean);
+                manualBfridsState[key] = mergedArray;
+                saveManualBfridsState(manualBfridsState);
             } catch (updateError) {
                 console.warn("[QGA] Не удалось обновить локальный снимок API ручной чистки:", updateError);
             }
