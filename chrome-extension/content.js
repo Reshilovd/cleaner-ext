@@ -282,8 +282,10 @@
 
         decorateVerifyRows(gridRoot);
 
+        let verifyDecorateTimer = null;
         const observer = new MutationObserver(() => {
-            decorateVerifyRows(gridRoot);
+            clearTimeout(verifyDecorateTimer);
+            verifyDecorateTimer = setTimeout(() => decorateVerifyRows(gridRoot), 150);
         });
         observer.observe(gridRoot, { childList: true, subtree: true });
 
@@ -3085,8 +3087,10 @@
 
         attach();
 
+        let manualAttachTimer = null;
         const observer = new MutationObserver(() => {
-            attach();
+            clearTimeout(manualAttachTimer);
+            manualAttachTimer = setTimeout(attach, 200);
         });
         observer.observe(document.body, { childList: true, subtree: true });
     }
