@@ -2818,6 +2818,7 @@
         const all = loadOpenEndsGroups();
         all[projectId] = groupByCode;
         saveOpenEndsGroups(all);
+        ensureManualGroupButtonHooked();
     }
 
     function loadManualBfridsState() {
@@ -4577,18 +4578,20 @@
                 } catch (e) {}
             }
 
+            const runCollect = () => {
+                try {
+                    collectOpenEndsGroupsFromPage();
+                } catch (e) {
+                    console.warn(
+                        `[QGA] Ошибка collectOpenEndsGroupsFromPage после ${label}:`,
+                        e
+                    );
+                }
+            };
             const handler = () => {
                 try {
-                    setTimeout(() => {
-                        try {
-                            collectOpenEndsGroupsFromPage();
-                        } catch (e) {
-                            console.warn(
-                                `[QGA] Ошибка collectOpenEndsGroupsFromPage после ${label}:`,
-                                e
-                            );
-                        }
-                    }, delay);
+                    setTimeout(runCollect, delay);
+                    setTimeout(runCollect, delay + 2000);
                 } catch (e) {}
             };
 
