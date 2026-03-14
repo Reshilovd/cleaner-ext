@@ -243,136 +243,15 @@
                         return;
                     }
 
-                    const respondentIdsByOpenEndId = state.verifyRespondentIdsByOpenEndId;
                     const answersMap = state.verifyAnswersByRespondentId;
-                    const idsByQuestionAndValue = state.verifyRespondentIdsByQuestionAndValue;
-                    const idsByValueOnly = state.verifyRespondentIdsByValueOnly;
-                    if (!answersMap || (!respondentIdsByOpenEndId && !idsByQuestionAndValue && !idsByValueOnly)) {
+                    if (!answersMap) {
                         alert("Индекс ответов респондентов недоступен.");
                         return;
                     }
 
-                    let respondentIds = [];
+                    const uniqueIds = getRespondentIdsForVerifyRow(row);
 
-                    if (respondentIdsByOpenEndId && respondentIdsByOpenEndId.size > 0) {
-                        // Основной поиск: по тексту ответа и коду переменной.
-                        if (respondentIds.length === 0) {
-                            const valueText = context.valueText || "";
-                            const contextCodes = getVerifyCodesForContext(context);
-                            if (contextCodes.length > 0 && valueText) {
-                                if (contextCodes.length > 1) {
-                                    const collected = new Set();
-                                    for (const code of contextCodes) {
-                                        for (const variant of getVerifyQuestionCodeVariants(code)) {
-                                            const key = buildVerifyQuestionValueKey(variant, valueText);
-                                            const arr = respondentIdsByOpenEndId.get(key) || [];
-                                            if (Array.isArray(arr)) arr.forEach((id) => collected.add(String(id)));
-                                        }
-                                    }
-                                    if (collected.size > 0) respondentIds = Array.from(collected);
-                                }
-                                if (respondentIds.length === 0) {
-                                    const singleCode = contextCodes[0];
-                                    for (const variant of getVerifyQuestionCodeVariants(singleCode)) {
-                                        const compositeKey = buildVerifyQuestionValueKey(variant, valueText);
-                                        const fromMap = respondentIdsByOpenEndId.get(compositeKey);
-                                        if (Array.isArray(fromMap) && fromMap.length > 0) {
-                                            respondentIds = fromMap.slice();
-                                            break;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        // Фоллбэк: по openEndId, если он все-таки есть в строке и в выгрузке.
-                        if (respondentIds.length === 0 && context.openEndId != null) {
-                            const key = String(context.openEndId).trim();
-                            const idsFromMap =
-                                respondentIdsByOpenEndId.get(key) ||
-                                respondentIdsByOpenEndId.get(String(context.openEndId)) ||
-                                [];
-                            if (Array.isArray(idsFromMap) && idsFromMap.length > 0) {
-                                respondentIds = idsFromMap.slice();
-                            }
-                        }
-                    }
-
-                    if (respondentIds.length === 0 && idsByQuestionAndValue) {
-                        const valueText = context.valueText || "";
-                        const contextCodes = getVerifyCodesForContext(context);
-                        if (contextCodes.length > 0 && valueText) {
-                            if (contextCodes.length > 1) {
-                                const collected = new Set();
-                                for (const code of contextCodes) {
-                                    for (const variant of getVerifyQuestionCodeVariants(code)) {
-                                        const key = buildVerifyQuestionValueKey(variant, valueText);
-                                        const arr = idsByQuestionAndValue.get(key) || [];
-                                        if (Array.isArray(arr)) arr.forEach((id) => collected.add(String(id)));
-                                    }
-                                }
-                                if (collected.size > 0) respondentIds = Array.from(collected);
-                            }
-                            if (respondentIds.length === 0) {
-                                const singleCode = contextCodes[0];
-                                for (const variant of getVerifyQuestionCodeVariants(singleCode)) {
-                                    const key = buildVerifyQuestionValueKey(variant, valueText);
-                                    const fromIndex = idsByQuestionAndValue.get(key);
-                                    if (Array.isArray(fromIndex) && fromIndex.length > 0) {
-                                        respondentIds = fromIndex.slice();
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // Фоллбэк по одному только тексту ответа:
-                    // если знаем код вопроса — жёстко ограничиваемся его группой
-                    // (или самим кодом, если вопрос не сгруппирован).
-                    // Если код вопроса определить не удалось — используем все ID
-                    // с таким текстом (как в исходной версии).
-                    if (respondentIds.length === 0 && idsByValueOnly) {
-                        const valueText = context.valueText || "";
-                        if (valueText) {
-                            const key = buildVerifyValueOnlyKey(valueText);
-                            const fromIndex = idsByValueOnly.get(key);
-                            if (Array.isArray(fromIndex) && fromIndex.length > 0) {
-                                const allowedCodes = getVerifyCodesForContext(context);
-
-                                if (allowedCodes.length > 0) {
-
-                                    const allowedCodeSet = new Set(
-                                        allowedCodes.flatMap((code) => getVerifyQuestionCodeVariants(code))
-                                    );
-                                    const allowedIdsSet = new Set();
-                                    for (const rawId of fromIndex) {
-                                        const idStr = String(rawId).trim();
-                                        if (!idStr) continue;
-                                        const answersForId =
-                                            answersMap.get(idStr) ||
-                                            answersMap.get(idStr.trim()) ||
-                                            [];
-                                        const hasAnswerInGroup = answersForId.some((ans) => {
-                                            const q = String(ans && ans.question ? ans.question : "").trim();
-                                            const answerValueKey = buildVerifyValueOnlyKey(
-                                                ans && ans.value ? ans.value : ""
-                                            );
-                                            return q && allowedCodeSet.has(q) && answerValueKey === key;
-                                        });
-                                        if (hasAnswerInGroup) {
-                                            allowedIdsSet.add(idStr);
-                                        }
-                                    }
-                                    respondentIds = Array.from(allowedIdsSet);
-                                } else {
-                                    // Не удалось определить код вопроса — используем все ID по тексту.
-                                    respondentIds = fromIndex.slice();
-                                }
-                            }
-                        }
-                    }
-
-                    if (respondentIds.length === 0) {
+                    if (uniqueIds.length === 0) {
                         alert(
                             "Не удалось найти респондента для этого ответа в выгрузке OpenEnds. " +
                                 "Возможные причины: формат файла выгрузки изменился или ответ не попал в файл."
@@ -380,7 +259,6 @@
                         return;
                     }
 
-                    const uniqueIds = Array.from(new Set(respondentIds.map((id) => String(id))));
                     applyVerifyRowVisibility(gridRoot);
                     const rowState = getVerifyRowIncorrectPostpone(gridRoot, row);
 
@@ -414,9 +292,8 @@
         Promise.all([
             ensureVerifyRespondentIndexLoaded(),
             projectId ? ensureRatingIncorrectIdsLoaded(projectId) : Promise.resolve(false)
-        ]).then(([indexOk]) => {
-            if (indexOk) applyVerifyRowVisibility(gridRoot);
-            else applyVerifyRowVisibility(gridRoot);
+        ]).then(() => {
+            applyVerifyRowVisibility(gridRoot);
         });
     }
 
