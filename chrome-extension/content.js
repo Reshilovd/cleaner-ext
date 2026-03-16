@@ -278,6 +278,13 @@
                     alert("Произошла ошибка при загрузке ответов респондента. Подробности в консоли.");
                 }
             });
+
+            gridRoot.addEventListener("change", (event) => {
+                const target = event.target;
+                if (!(target instanceof HTMLInputElement)) return;
+                if (target.type !== "checkbox") return;
+                applyVerifyRowVisibility(gridRoot);
+            });
         }
 
         decorateVerifyRows(gridRoot);
@@ -2579,6 +2586,17 @@
             row.classList.remove("qga-verify-row-hidden");
             ALL_ROW_REASON_CLASSES.forEach((cls) => row.classList.remove(cls));
 
+            const { incorrect, postpone } = getVerifyRowIncorrectPostpone(gridRoot, row);
+            const hasManualOverride = incorrect || postpone;
+
+            if (hasManualOverride) {
+                if (row.dataset.qgaRowGradient === "1") {
+                    delete row.dataset.qgaRowGradient;
+                }
+                // Не трогаем background: стандартная чистилка сама перекрасит строку
+                continue;
+            }
+
             let allCodes = [];
             let topCode = 0;
 
@@ -3905,7 +3923,16 @@
 
         const titleNode = modal.querySelector(".qga-verify-modal__title");
         const listNode = modal.querySelector(".qga-verify-modal__list");
-        const footerNode = modal.querySelector(".qga-verify-modal__footer");
+
+        let footerNode = modal.querySelector(".qga-verify-modal__footer");
+        if (!footerNode) {
+            const bodyNode = modal.querySelector(".qga-verify-modal__body");
+            footerNode = document.createElement("div");
+            footerNode.className = "qga-verify-modal__footer";
+            if (bodyNode && bodyNode.appendChild) {
+                bodyNode.appendChild(footerNode);
+            }
+        }
 
         if (titleNode) {
             titleNode.textContent = String(respondentId);
