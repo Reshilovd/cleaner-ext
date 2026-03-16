@@ -2579,8 +2579,6 @@
             row.classList.remove("qga-verify-row-hidden");
             ALL_ROW_REASON_CLASSES.forEach((cls) => row.classList.remove(cls));
 
-            row.style.removeProperty("background");
-
             const n = getVerifyRowN(gridRoot, row);
             if (n !== 1) {
                 continue;
@@ -2597,12 +2595,21 @@
                 }
             }
 
+            let appliedGradient = false;
             if (allCodes.length > 1) {
                 const colors = allCodes.map((c) => ROW_BG_COLOR[c]).filter(Boolean);
                 if (colors.length > 1) {
                     row.style.background = "linear-gradient(to right, " + colors.join(", ") + ")";
+                    row.dataset.qgaRowGradient = "1";
+                    appliedGradient = true;
                 }
-            } else {
+            }
+
+            if (!appliedGradient) {
+                if (row.dataset.qgaRowGradient === "1") {
+                    row.style.removeProperty("background");
+                    delete row.dataset.qgaRowGradient;
+                }
                 const rowClass = REASON_CODE_ROW_CLASS[topCode];
                 if (rowClass) {
                     row.classList.add(rowClass);
