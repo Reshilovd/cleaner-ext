@@ -2586,18 +2586,33 @@
                 const ids = getRespondentIdsForVerifyRow(row);
                 if (ids && ids.length > 0) {
                     const codesSet = [];
+                    let hasAnyReasons = false;
+                    let hasCleanRespondent = false;
+
                     for (const respondentId of ids) {
-                        const codes = getRespondentAllReasonCodes(respondentId, verifyIncorrectSet, ratingReasonMap, alreadyInManualSet);
+                        const codes = getRespondentAllReasonCodes(
+                            respondentId,
+                            verifyIncorrectSet,
+                            ratingReasonMap,
+                            alreadyInManualSet
+                        );
+
                         if (Array.isArray(codes) && codes.length > 0) {
+                            hasAnyReasons = true;
                             for (const c of codes) {
                                 if (codesSet.indexOf(c) === -1) {
                                     codesSet.push(c);
                                 }
                             }
+                        } else {
+                            hasCleanRespondent = true;
                         }
                     }
-                    allCodes = codesSet;
-                    topCode = getTopReasonCode(allCodes);
+
+                    if (hasAnyReasons && !hasCleanRespondent) {
+                        allCodes = codesSet;
+                        topCode = getTopReasonCode(allCodes);
+                    }
                 }
             }
 
