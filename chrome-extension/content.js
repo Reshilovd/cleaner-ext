@@ -2579,18 +2579,24 @@
             row.classList.remove("qga-verify-row-hidden");
             ALL_ROW_REASON_CLASSES.forEach((cls) => row.classList.remove(cls));
 
-            const n = getVerifyRowN(gridRoot, row);
-            if (n !== 1) {
-                continue;
-            }
-
             let allCodes = [];
             let topCode = 0;
 
             if (state.verifyRespondentIndexLoaded) {
                 const ids = getRespondentIdsForVerifyRow(row);
-                if (ids.length === 1) {
-                    allCodes = getRespondentAllReasonCodes(ids[0], verifyIncorrectSet, ratingReasonMap, alreadyInManualSet);
+                if (ids && ids.length > 0) {
+                    const codesSet = [];
+                    for (const respondentId of ids) {
+                        const codes = getRespondentAllReasonCodes(respondentId, verifyIncorrectSet, ratingReasonMap, alreadyInManualSet);
+                        if (Array.isArray(codes) && codes.length > 0) {
+                            for (const c of codes) {
+                                if (codesSet.indexOf(c) === -1) {
+                                    codesSet.push(c);
+                                }
+                            }
+                        }
+                    }
+                    allCodes = codesSet;
                     topCode = getTopReasonCode(allCodes);
                 }
             }
