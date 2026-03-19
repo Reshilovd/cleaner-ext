@@ -2244,13 +2244,13 @@
                 top: 50%;
                 transform: translateY(-50%);
                 display: grid;
-                grid-template-columns: repeat(2, 18px);
-                gap: 2px;
-                margin-left: 3px;
+                grid-template-columns: repeat(2, 15px);
+                gap: 4px;
+                margin-left: 6px;
             }
             .qga-reason-icons img {
-                width: 18px;
-                height: 18px;
+                width: 15px;
+                height: 15px;
                 display: block;
             }
             .qga-verify-row-disputed {
