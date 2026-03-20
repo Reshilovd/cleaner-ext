@@ -1239,17 +1239,49 @@
         if (!(row instanceof HTMLTableRowElement)) return "";
         if (idColumnIndex < 0) return "";
 
+        const extractNumeric = (value) => {
+            if (!value) return "";
+            const normalized = normalizeSingleLine(String(value));
+            if (!normalized) return "";
+            const m = normalized.match(/\d+/);
+            return m ? m[0] : "";
+        };
+
         const editLink = row.querySelector("a[href*='/Project/Edit/'], a[href*='/project/edit/']");
         if (editLink && editLink instanceof HTMLAnchorElement) {
             const rawHref = editLink.getAttribute("href") || editLink.href || "";
-            const id = sanitizeProjectId(rawHref);
-            if (id) return id;
+            const match = rawHref.match(/\/Project\/Edit\/(\d+)/i);
+            if (match && match[1]) {
+                return match[1];
+            }
+
+            const linkId = extractNumeric(rawHref);
+            if (linkId) return linkId;
+        }
+
+        const anyLink = row.querySelector("a[href*='/project/'], a[href*='/Project/']");
+        if (anyLink && anyLink instanceof HTMLAnchorElement) {
+            const rawHref = anyLink.getAttribute("href") || anyLink.href || "";
+            const linkId = extractNumeric(rawHref);
+            if (linkId) return linkId;
         }
 
         const cells = row.querySelectorAll("td");
-        if (!cells.length || idColumnIndex >= cells.length) return "";
+        if (!cells.length) return "";
 
-        return sanitizeProjectId(cells[idColumnIndex] && cells[idColumnIndex].textContent ? cells[idColumnIndex].textContent : "");
+        if (idColumnIndex < cells.length) {
+            const idValue = extractNumeric(cells[idColumnIndex].textContent || "");
+            if (idValue) return idValue;
+        }
+
+        // Резервный вариант: ищем номер внутри всей строки
+        const wholeText = row.textContent || "";
+        const allMatch = wholeText.match(/(\d+)/);
+        if (allMatch && allMatch[1]) {
+            return allMatch[1];
+        }
+
+        return "";
     }
 
     function syncCleanerProjectsFavoritesUI() {
