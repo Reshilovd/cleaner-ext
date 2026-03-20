@@ -1325,6 +1325,9 @@
 
                     const currentBtn = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
                     if (currentBtn) {
+                        currentBtn.classList.add("qga-cleaner-project-fav-btn-clicked");
+                        setTimeout(() => currentBtn.classList.remove("qga-cleaner-project-fav-btn-clicked"), 150);
+
                         currentBtn.textContent = favSet.has(pid) ? "\u2605" : "\u2606";
                         currentBtn.setAttribute(
                             "aria-label",
@@ -3263,9 +3266,9 @@
                 scale: 1;
                 transition: scale 0.15s ease-in-out;
             }
-            /*.qga-cleaner-project-fav-btn-clicked {
+            .qga-cleaner-project-fav-btn-clicked {
                 scale: 1.3;
-            }*/
+            }
             /* Расширяем первую колонку таблицы проектов, чтобы звезда полностью помещалась */
             .k-grid-content tbody tr td:first-child,
             .k-grid-header tbody tr th:first-child {
