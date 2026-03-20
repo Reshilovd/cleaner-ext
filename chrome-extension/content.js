@@ -1050,6 +1050,24 @@
         }
     }
 
+    window.onFavoritesOnlyChange = function(checked) {
+        state.cleanerProjectsFavoritesOnlyEnabled = Boolean(checked);
+        saveCleanerProjectsFavoritesOnlyEnabled(state.cleanerProjectsFavoritesOnlyEnabled);
+        applyCleanerProjectsFavoritesOnlyFilter();
+    };
+
+    function syncFavoritesOnlySwitchUI(root, checked) {
+        if (!(root instanceof HTMLElement)) return;
+        const switchBox = root.querySelector("#qga-favorites-only-switch") || root;
+        const isChecked = Boolean(checked);
+        switchBox.className = isChecked ? "k-switch k-widget k-switch-on" : "k-switch k-widget k-switch-off";
+        switchBox.setAttribute("aria-checked", String(isChecked));
+        const input = root.querySelector("input[type='checkbox']");
+        if (input instanceof HTMLInputElement) {
+            input.checked = isChecked;
+        }
+    }
+
     function setupCleanerProjectsFavoritesOnlyToggle() {
         if (state.cleanerProjectsFavoritesOnlyToggleBound) {
             applyCleanerProjectsFavoritesOnlyFilter();
@@ -1077,38 +1095,87 @@
 
         const existing = document.getElementById("qga-cleaner-only-favorites-toggle");
         if (existing) {
-            const checkbox = existing.querySelector("input[type='checkbox']");
-            if (checkbox instanceof HTMLInputElement) {
-                checkbox.checked = state.cleanerProjectsFavoritesOnlyEnabled;
-            }
+            syncFavoritesOnlySwitchUI(existing, state.cleanerProjectsFavoritesOnlyEnabled);
             applyCleanerProjectsFavoritesOnlyFilter();
             return;
         }
 
-        const label = document.createElement("label");
-        label.id = "qga-cleaner-only-favorites-toggle";
-        label.className = "qga-only-favorites-toggle";
+        const filterText = document.createElement("span");
+        filterText.id = "qga-cleaner-only-favorites-toggle";
+        filterText.className = "filter_text";
 
-        const checkbox = document.createElement("input");
-        checkbox.type = "checkbox";
-        checkbox.checked = state.cleanerProjectsFavoritesOnlyEnabled;
-        checkbox.addEventListener("change", () => {
-            state.cleanerProjectsFavoritesOnlyEnabled = checkbox.checked;
-            saveCleanerProjectsFavoritesOnlyEnabled(state.cleanerProjectsFavoritesOnlyEnabled);
-            applyCleanerProjectsFavoritesOnlyFilter();
-        });
+        const switchSpan = document.createElement("span");
+        switchSpan.id = "qga-favorites-only-switch";
+        switchSpan.className = "k-switch k-widget";
+        switchSpan.setAttribute("role", "switch");
+        switchSpan.setAttribute("tabindex", "0");
+
+        const input = document.createElement("input");
+        input.type = "checkbox";
+        input.style.display = "none";
+
+        const container = document.createElement("span");
+        container.className = "k-switch-container";
+
+        const labelOn = document.createElement("span");
+        labelOn.className = "k-switch-label-on";
+        labelOn.textContent = "On";
+
+        const labelOff = document.createElement("span");
+        labelOff.className = "k-switch-label-off";
+        labelOff.textContent = "Off";
+
+        const handle = document.createElement("span");
+        handle.className = "k-switch-handle";
+
+        container.appendChild(labelOn);
+        container.appendChild(labelOff);
+        container.appendChild(handle);
+
+        switchSpan.appendChild(input);
+        switchSpan.appendChild(container);
 
         const text = document.createElement("span");
         text.textContent = "Только избранные";
 
-        label.appendChild(checkbox);
-        label.appendChild(text);
+        filterText.appendChild(switchSpan);
+        filterText.appendChild(document.createTextNode("\u00A0\u00A0"));
+        filterText.appendChild(text);
 
-        searchInput.insertAdjacentElement("afterend", label);
+        const dropdownRight = document.querySelector(".dropdown.float-right");
+        if (dropdownRight instanceof HTMLElement) {
+            dropdownRight.insertBefore(filterText, dropdownRight.firstElementChild);
+        } else {
+            const myProjectsElement = Array.from(document.querySelectorAll("label, span, div, a, p")).find((el) => {
+                const txt = (el.textContent || "").trim();
+                return txt === "Мои проекты" || txt === "Мои проекты:" || txt.startsWith("Мои проекты");
+            });
+
+            if (myProjectsElement && myProjectsElement.parentElement) {
+                myProjectsElement.parentElement.insertBefore(filterText, myProjectsElement);
+            } else {
+                searchInput.insertAdjacentElement("afterend", filterText);
+            }
+        }
+
+        const toggleSwitchState = () => {
+            const checked = !state.cleanerProjectsFavoritesOnlyEnabled;
+            window.onFavoritesOnlyChange(checked);
+            syncFavoritesOnlySwitchUI(switchSpan, checked);
+        };
+
+        switchSpan.addEventListener("click", toggleSwitchState);
+        switchSpan.addEventListener("keydown", (evt) => {
+            if (evt.key === "Enter" || evt.key === " ") {
+                evt.preventDefault();
+                toggleSwitchState();
+            }
+        });
+
+        syncFavoritesOnlySwitchUI(filterText, state.cleanerProjectsFavoritesOnlyEnabled);
 
         applyCleanerProjectsFavoritesOnlyFilter();
     }
-
     function getCleanerProjectsFavoritesSet() {
         if (!state.cleanerProjectsFavoritesSet) {
             state.cleanerProjectsFavoritesSet = loadCleanerProjectsFavoritesSet();
@@ -3156,6 +3223,13 @@
                 border-color: #6366f1;
                 box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15);
             }
+            .qga-author-filter-item input[type="checkbox"] {
+                accent-color: #2196F3;
+                border-color: #2196F3;
+            }
+            .qga-author-filter-item input[type="checkbox"]:checked + span {
+                color: #2196F3;
+            }
             .qga-author-filter-item {
                 display: flex;
                 align-items: center;
@@ -3186,19 +3260,11 @@
                 font-size: 17px;
                 line-height: 1.2;
                 vertical-align: middle;
+                scale: 1;
+                transition: scale 0.15s ease-in-out;
             }
-            /*.qga-cleaner-project-fav-btn {
-                margin: 0 0 0 -13px;
-                width: 22px;
-                height: 22px;
-                border-radius: 6px;
-                border: 1px solid #cbd5e1;
-                background: #ffffff;
-                color: #9ca3af;
-                cursor: pointer;
-                font-size: 17px;
-                line-height: 1.2;
-                vertical-align: middle;
+            /*.qga-cleaner-project-fav-btn-clicked {
+                scale: 1.3;
             }*/
             /* Расширяем первую колонку таблицы проектов, чтобы звезда полностью помещалась */
             .k-grid-content tbody tr td:first-child,
