@@ -163,7 +163,8 @@
         cleanerProjectsFavoritesOnlyToggleBound: false,
         cleanerProjectsFavoritesOnlyToggleEl: null,
         cleanerProjectsFavoritesOnlyUiScheduled: false,
-        cleanerProjectsFavoritesOnlyObserverThrottleMs: 200
+        cleanerProjectsFavoritesOnlyObserverThrottleMs: 200,
+        pyrusGroupsExpandedByExtension: new Set()
     };
 
 
@@ -1606,6 +1607,8 @@
                 return;
             }
 
+            collapsePyrusGroupsExpandedByExtension();
+
             const cleanerUrl = buildCleanerAutoFillUrl();
             const openResult = await openCleanerInNewTab(cleanerUrl);
             if (!openResult.ok) {
@@ -1628,6 +1631,10 @@
     }
 
     async function copyPyrusPayloadToStorage() {
+        // Очистка localStorage перед копированием новых данных
+        localStorage.removeItem(PROJECT_PREFILL_STORAGE_KEY);
+        localStorage.removeItem(PROJECT_PREFILL_STORAGE_FALLBACK_KEY);
+
         const rawPayload = await collectPyrusProjectPayloadWithExpansion();
         const notFoundByXPath = rawPayload.notFoundByXPath || [];
 
@@ -1749,6 +1756,7 @@
 
     async function collectPyrusProjectPayloadWithExpansion() {
         expandPyrusGroupByTitle("сетап");
+        expandPyrusGroupByTitle("ссылки");
         await wait(220);
 
         const expandedInsideSetup = expandCollapsedGroupsInsideSetup();
@@ -2165,10 +2173,45 @@
 
             if (clickPyrusGroupButton(button)) {
                 expanded += 1;
+                state.pyrusGroupsExpandedByExtension.add(titlePart);
             }
         }
 
         return expanded;
+    }
+
+    function collapsePyrusGroupByTitle(titlePart) {
+        const target = normalizeSingleLine(titlePart).toLowerCase();
+        if (!target) {
+            return 0;
+        }
+
+        const buttons = getPyrusGroupTitleButtons();
+        let collapsed = 0;
+
+        for (const button of buttons) {
+            const title = getPyrusGroupButtonTitle(button).toLowerCase();
+            if (!title || !title.includes(target)) {
+                continue;
+            }
+            if (isPyrusGroupButtonCollapsed(button)) {
+                continue;
+            }
+
+            if (clickPyrusGroupButton(button)) {
+                collapsed += 1;
+            }
+        }
+
+        return collapsed;
+    }
+
+    function collapsePyrusGroupsExpandedByExtension() {
+        const groups = Array.from(state.pyrusGroupsExpandedByExtension);
+        state.pyrusGroupsExpandedByExtension.clear();
+        for (const group of groups) {
+            collapsePyrusGroupByTitle(group);
+        }
     }
 
     function findSetupGroupContainer() {
@@ -2205,6 +2248,7 @@
 
             if (clickPyrusGroupButton(button)) {
                 expanded += 1;
+                state.pyrusGroupsExpandedByExtension.add(title);
             }
         }
 
