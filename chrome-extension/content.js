@@ -1207,7 +1207,7 @@
             }
 
             const isFav = favorites.has(projectId);
-            row.classList.toggle("qga-cleaner-project-fav-row", isFav);
+            // row.classList.toggle("qga-cleaner-project-fav-row", isFav);
             if (state.cleanerProjectsFavoritesOnlyEnabled) {
                 row.classList.toggle("qga-cleaner-project-fav-only-hidden-row", !isFav);
             } else {
@@ -1215,18 +1215,19 @@
             }
 
             let btn = row.querySelector(".qga-cleaner-project-fav-btn");
-            if (!(btn instanceof HTMLButtonElement)) {
+            if (!(btn instanceof HTMLElement)) {
                 const cells = row.querySelectorAll("td");
-                const idCell = idColumnIndex >= 0 && idColumnIndex < cells.length ? cells[idColumnIndex] : null;
+                const firstCell = cells.length > 0 ? cells[0] : null;
 
-                btn = document.createElement("button");
-                btn.type = "button";
+                btn = document.createElement("div");
                 btn.className = "qga-cleaner-project-fav-btn";
                 btn.dataset.qgaCleanerProjectId = projectId;
                 btn.setAttribute("aria-label", isFav ? "Убрать из избранного" : "Добавить в избранное");
+                btn.setAttribute("role", "button");
+                btn.setAttribute("tabindex", "0");
 
-                btn.addEventListener("click", (event) => {
-                    if (!(event instanceof MouseEvent)) return;
+                const handleFavToggle = (event) => {
+                    if (!(event instanceof Event)) return;
                     event.preventDefault();
                     event.stopPropagation();
 
@@ -1262,24 +1263,26 @@
                             "aria-label",
                             favSet.has(pid) ? "Убрать из избранного" : "Добавить в избранное"
                         );
-                        if (currentBtn instanceof HTMLButtonElement) {
-                            currentBtn.classList.toggle("qga-cleaner-project-fav-btn--fav", favSet.has(pid));
-                        }
+                        currentBtn.classList.toggle("qga-cleaner-project-fav-btn--fav", favSet.has(pid));
+                    }
+                };
+
+                btn.addEventListener("click", handleFavToggle);
+                btn.addEventListener("keydown", (event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                        handleFavToggle(event);
                     }
                 });
 
-                if (idCell) {
-                    const editLink = row.querySelector("a[href*='/Project/Edit/'], a[href*='/project/edit/']");
-                    if (editLink && editLink instanceof HTMLAnchorElement && idCell.contains(editLink)) {
-                        const wrap = document.createElement("span");
-                        wrap.className = "qga-cleaner-project-fav-btn-wrap";
-                        editLink.insertAdjacentElement("afterend", wrap);
-                        wrap.appendChild(btn);
-                    } else {
-                        idCell.appendChild(btn);
+                if (firstCell) {
+                    // Убираем картинку из первой ячейки
+                    const img = firstCell.querySelector("img");
+                    if (img) {
+                        img.remove();
                     }
+                    firstCell.appendChild(btn);
                 } else {
-                    // Fallback: если не нашли ID ячейку, вставим к первому найденному editLink.
+                    // Fallback: если не нашли первую ячейку, вставим к первому найденному editLink.
                     const editLink = row.querySelector("a[href*='/Project/Edit/'], a[href*='/project/edit/']");
                     if (editLink && editLink instanceof HTMLAnchorElement) {
                         const wrap = document.createElement("span");
@@ -3167,15 +3170,12 @@
             .qga-author-filter-hidden-row {
                 display: none !important;
             }
-            .qga-cleaner-project-fav-row {
-                background-color: rgba(245, 158, 11, 0.08) !important;
-            }
             .qga-cleaner-project-fav-btn-wrap {
                 display: inline-flex;
                 align-items: center;
             }
             .qga-cleaner-project-fav-btn {
-                margin-left: 8px;
+                margin: 0 0 0 -13px;
                 width: 22px;
                 height: 22px;
                 border-radius: 6px;
@@ -3183,22 +3183,37 @@
                 background: #ffffff;
                 color: #9ca3af;
                 cursor: pointer;
-                font-size: 13px;
-                line-height: 1;
-                padding: 0;
+                font-size: 17px;
+                line-height: 1.2;
                 vertical-align: middle;
+            }
+            /*.qga-cleaner-project-fav-btn {
+                margin: 0 0 0 -13px;
+                width: 22px;
+                height: 22px;
+                border-radius: 6px;
+                border: 1px solid #cbd5e1;
+                background: #ffffff;
+                color: #9ca3af;
+                cursor: pointer;
+                font-size: 17px;
+                line-height: 1.2;
+                vertical-align: middle;
+            }*/
+            /* Расширяем первую колонку таблицы проектов, чтобы звезда полностью помещалась */
+            .k-grid-content tbody tr td:first-child,
+            .k-grid-header tbody tr th:first-child {
+                min-width: 40px !important;
+                width: 40px !important;
+                max-width: 40px !important;
             }
             .qga-cleaner-project-fav-btn:hover {
                 background: #fff7ed;
                 border-color: #fb923c;
             }
-            .qga-cleaner-project-fav-btn:focus {
-                outline: 2px solid rgba(99, 102, 241, 0.45);
-                outline-offset: 2px;
-            }
             .qga-cleaner-project-fav-btn--fav {
-                color: #c2410c;
-                border-color: #fb923c;
+                color: #ffc107;
+                border-color: #ffc107;
                 background: #fff7ed;
             }
             .qga-cleaner-project-fav-only-hidden-row {
