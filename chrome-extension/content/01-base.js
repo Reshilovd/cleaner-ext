@@ -12,6 +12,7 @@ if (QGA_CONTENT_SHOULD_RUN) {
 var STORAGE_KEY = "__qga_state_v2__";
 var PROJECT_PREFILL_STORAGE_KEY = "__qga_project_prefill_v1__";
 var PROJECT_PREFILL_STORAGE_FALLBACK_KEY = "__qga_project_prefill_v1_fallback__";
+var PROJECT_PREFILL_QUERY_KEY = "qga_prefill";
 var PANEL_ID = "qga-panel";
 var HIGHLIGHT_CLASS = "qga-highlight";
 var OPENENDS_VERIFY_SHORTCUT_BUTTON_ID = "qga-openends-verify-shortcut";
@@ -129,6 +130,7 @@ var state = typeof state !== "undefined" && state ? state : {
         pyrusHashListenerAttached: false,
         verifyRespondentIndexLoaded: false,
         verifyRespondentIndexLoading: false,
+        verifyRespondentIndexPromise: null,
         verifyRespondentIndexError: null,
         verifyRespondentIdsByOpenEndId: null,
         verifyAnswersByRespondentId: null,

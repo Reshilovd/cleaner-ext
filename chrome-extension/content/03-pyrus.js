@@ -236,7 +236,9 @@
 
             collapsePyrusGroupsExpandedByExtension();
 
-            const cleanerUrl = buildCleanerAutoFillUrl();
+            const cleanerUrl = buildCleanerAutoFillUrl(result.payload, {
+                includePayload: result.transportMode === "url"
+            });
             const openResult = await openCleanerInNewTab(cleanerUrl);
             if (!openResult.ok) {
                 alert("Не удалось открыть CleanerUI в новой вкладке. Проверьте, что расширение обновлено, и повторите.");
@@ -288,8 +290,8 @@
         payload.copiedAt = new Date().toISOString();
         payload.notFoundByXPath = notFoundByXPath;
 
-        const saved = await saveProjectPayload(payload);
-        if (!saved) {
+        const saveResult = await saveProjectPayload(payload);
+        if (!saveResult.ok) {
             return {
                 ok: false,
                 message: "Не удалось сохранить данные в хранилище расширения."
@@ -299,7 +301,8 @@
         return {
             ok: true,
             payload,
-            missing: collectMissingProjectPayloadFields(payload)
+            missing: collectMissingProjectPayloadFields(payload),
+            transportMode: saveResult.mode
         };
     }
 
@@ -325,11 +328,94 @@
         return missing;
     }
 
-    function buildCleanerAutoFillUrl() {
+    function buildCleanerAutoFillUrl(payload, options = {}) {
         const url = new URL("https://clr.env7.biz/lk");
         url.searchParams.set(CLEANER_AUTO_FILL_QUERY_KEY, "1");
         url.searchParams.set("_t", Date.now().toString());
+
+        if (options.includePayload) {
+            const serializedPayload = serializeProjectPayloadForQuery(payload);
+            if (serializedPayload) {
+                url.searchParams.set(PROJECT_PREFILL_QUERY_KEY, serializedPayload);
+            }
+        }
+
         return url.toString();
+    }
+
+    function serializeProjectPayloadForQuery(payload) {
+        const normalizedPayload = normalizeTransferredProjectPayload(payload);
+        if (!normalizedPayload) {
+            return "";
+        }
+
+        try {
+            return JSON.stringify(normalizedPayload);
+        } catch (error) {
+            console.warn("[QGA] Failed to serialize project payload for URL fallback:", error);
+            return "";
+        }
+    }
+
+    function readProjectPayloadFromQuery() {
+        let raw = "";
+
+        try {
+            const url = new URL(window.location.href);
+            raw = url.searchParams.get(PROJECT_PREFILL_QUERY_KEY) || "";
+        } catch (error) {
+            return null;
+        }
+
+        if (!raw) {
+            return null;
+        }
+
+        try {
+            return normalizeTransferredProjectPayload(JSON.parse(raw));
+        } catch (error) {
+            console.warn("[QGA] Failed to read project payload from URL fallback:", error);
+            return null;
+        }
+    }
+
+    function normalizeTransferredProjectPayload(payload) {
+        if (!payload || typeof payload !== "object") {
+            return null;
+        }
+
+        const normalized = {};
+        const projectName = normalizeSingleLine(payload.projectName || "");
+        const projectId = sanitizeProjectId(payload.projectId || "");
+        const plan = sanitizePlan(payload.plan || "");
+        const dbName = sanitizeDbName(payload.dbName || "");
+        const notFoundByXPath = Array.isArray(payload.notFoundByXPath)
+            ? Array.from(
+                new Set(
+                    payload.notFoundByXPath
+                        .map((item) => normalizeSingleLine(item))
+                        .filter(Boolean)
+                )
+            )
+            : [];
+
+        if (projectName) {
+            normalized.projectName = projectName;
+        }
+        if (projectId) {
+            normalized.projectId = projectId;
+        }
+        if (plan) {
+            normalized.plan = plan;
+        }
+        if (dbName) {
+            normalized.dbName = dbName;
+        }
+        if (notFoundByXPath.length > 0) {
+            normalized.notFoundByXPath = notFoundByXPath;
+        }
+
+        return Object.keys(normalized).length > 0 ? normalized : null;
     }
 
     function openCleanerInNewTab(url) {
@@ -416,6 +502,7 @@
             }
 
             url.searchParams.delete(CLEANER_AUTO_FILL_QUERY_KEY);
+            url.searchParams.delete(PROJECT_PREFILL_QUERY_KEY);
             const search = url.searchParams.toString();
             const nextUrl = `${url.pathname}${search ? `?${search}` : ""}${url.hash || ""}`;
             window.history.replaceState({}, "", nextUrl);
@@ -1188,10 +1275,24 @@
         input.dispatchEvent(new Event("blur", { bubbles: true }));
     }
 
-    function saveProjectPayload(payload) {
+    async function saveProjectPayload(payload) {
         saveProjectPayloadToLocalStorage(payload);
 
-        const storage = typeof chrome !== "undefined" && chrome.storage && chrome.storage.local ? chrome.storage.local : null;
+        const chromeStorageResult = await writeProjectPayloadToChromeStorage(payload);
+        if (chromeStorageResult.ok) {
+            return { ok: true, mode: "chrome_storage" };
+        }
+
+        if (chromeStorageResult.error) {
+            console.warn(
+                "[QGA] Failed to save project payload to chrome.storage, using URL fallback:",
+                chromeStorageResult.error
+            );
+        }
+
+        return { ok: true, mode: "url" };
+
+        /* const storage = typeof chrome !== "undefined" && chrome.storage && chrome.storage.local ? chrome.storage.local : null;
         if (!storage) {
             return Promise.resolve(true);
         }
@@ -1211,10 +1312,43 @@
                 console.warn("[QGA] Исключение при сохранении в chrome.storage, использован fallback localStorage:", error);
                 resolve(true);
             }
+        }); */
+    }
+
+    function writeProjectPayloadToChromeStorage(payload) {
+        const storage = typeof chrome !== "undefined" && chrome.storage && chrome.storage.local ? chrome.storage.local : null;
+        if (!storage) {
+            return Promise.resolve({ ok: false, error: "chrome.storage.local unavailable" });
+        }
+
+        return new Promise((resolve) => {
+            try {
+                storage.set({ [PROJECT_PREFILL_STORAGE_KEY]: payload }, () => {
+                    const lastErrorMessage = getChromeRuntimeLastErrorMessage();
+                    if (lastErrorMessage) {
+                        resolve({ ok: false, error: lastErrorMessage });
+                        return;
+                    }
+
+                    resolve({ ok: true });
+                });
+            } catch (error) {
+                resolve({
+                    ok: false,
+                    error: String(error && error.message ? error.message : error)
+                });
+            }
         });
     }
 
     function readStoredProjectPayload() {
+        const queryPayload = readProjectPayloadFromQuery();
+        if (queryPayload) {
+            saveProjectPayloadToLocalStorage(queryPayload);
+            void writeProjectPayloadToChromeStorage(queryPayload);
+            return Promise.resolve(queryPayload);
+        }
+
         const fallbackPayload = readProjectPayloadFromLocalStorage();
 
         const storage = typeof chrome !== "undefined" && chrome.storage && chrome.storage.local ? chrome.storage.local : null;
