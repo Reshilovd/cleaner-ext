@@ -27,7 +27,12 @@
       ],
       "js": [
         "xlsx.full.min.js",
-        "content.js"
+        "content/01-base.js",
+        "content/02-cleaner-projects.js",
+        "content/03-pyrus.js",
+        "content/04-storage-styles.js",
+        "content/05-verify.js",
+        "content/06-openends-panel.js"
       ],
       "run_at": "document_idle"
     }

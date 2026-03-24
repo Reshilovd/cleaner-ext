@@ -66,7 +66,7 @@
 ## Файлы
 
 - `chrome-extension/manifest.json` — манифест расширения (Manifest V3).
-- `chrome-extension/content.js` — основной скрипт (OpenEnds, проверка, Pyrus, форма Cleaner, фильтры проектов).
+- `chrome-extension/content/*.js` — content-скрипт, разбитый на модули: bootstrap, Cleaner Projects, Pyrus, storage/styles, Verify, панель OpenEnds.
 - `chrome-extension/background.js` — сервис-воркер.
 - `chrome-extension/xlsx.full.min.js` — разбор выгрузки OpenEnds (XLSX).
 - `chrome-extension/package.json` — зависимости для разработки.
