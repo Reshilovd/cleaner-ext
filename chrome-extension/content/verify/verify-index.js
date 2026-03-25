@@ -1,16 +1,44 @@
 "use strict";
 
+    function resetVerifyRespondentIndexState() {
+        state.verifyRespondentIndexLoaded = false;
+        state.verifyRespondentIndexLoading = false;
+        state.verifyRespondentIndexPromise = null;
+        state.verifyRespondentIndexError = null;
+        state.verifyRespondentIndexProjectId = null;
+        state.verifyRespondentIdsByOpenEndId = null;
+        state.verifyAnswersByRespondentId = null;
+        state.verifyRespondentIdsByQuestionAndValue = null;
+        state.verifyRespondentIdsByValueOnly = null;
+        state.verifyRespondentIdsLookupCache = new Map();
+    }
+
     async function ensureVerifyRespondentIndexLoaded(triggerButton) {
-        if (state.verifyRespondentIndexLoaded) {
+        const projectId = getProjectIdForVerify();
+        const projectKey = projectId != null ? String(projectId).trim() : "";
+
+        if (
+            state.verifyRespondentIndexLoaded &&
+            state.verifyRespondentIndexProjectId === projectKey
+        ) {
             return true;
         }
 
-        if (state.verifyRespondentIndexPromise) {
-            return await waitForVerifyRespondentIndexPromise(state.verifyRespondentIndexPromise, triggerButton);
+        if (
+            state.verifyRespondentIndexProjectId &&
+            state.verifyRespondentIndexProjectId !== projectKey
+        ) {
+            resetVerifyRespondentIndexState();
         }
 
-        const projectId = getProjectIdForVerify();
-        if (!projectId) {
+        if (state.verifyRespondentIndexPromise) {
+            return await waitForVerifyRespondentIndexPromise(
+                state.verifyRespondentIndexPromise,
+                triggerButton
+            );
+        }
+
+        if (!projectKey) {
             state.verifyRespondentIndexError =
                 "Не удалось определить идентификатор проекта (ProjectId) на странице VerifyMain.";
             console.warn("[QGA] VerifyMain: не найден ProjectId для загрузки выгрузки OpenEnds.");
@@ -19,37 +47,58 @@
 
         state.verifyRespondentIndexLoading = true;
         state.verifyRespondentIndexError = null;
+        state.verifyRespondentIndexProjectId = projectKey;
+        state.verifyRespondentIdsLookupCache = new Map();
 
         const loadPromise = (async () => {
             try {
-                const url = `/lk/OpenEnds2/DownloadOpenEnds/${encodeURIComponent(String(projectId))}`;
+                const url = `/lk/OpenEnds2/DownloadOpenEnds/${encodeURIComponent(projectKey)}`;
                 console.info("[QGA] VerifyMain: загрузка выгрузки OpenEnds (XLSX) с", url);
 
                 const response = await fetch(url, { credentials: "include" });
                 if (!response.ok) {
-                    state.verifyRespondentIndexError = `Сервер вернул статус ${response.status} при загрузке OpenEnds.`;
-                    console.warn("[QGA] VerifyMain: ошибка ответа при загрузке OpenEnds:", response.status);
+                    state.verifyRespondentIndexError =
+                        `Сервер вернул статус ${response.status} при загрузке OpenEnds.`;
+                    console.warn(
+                        "[QGA] VerifyMain: ошибка ответа при загрузке OpenEnds:",
+                        response.status
+                    );
                     return false;
                 }
 
                 const buffer = await response.arrayBuffer();
-                const parsed = parseOpenEndsFromXlsx(buffer);
+                const parsed = await parseOpenEndsFromXlsx(buffer);
+                if (state.verifyRespondentIndexProjectId !== projectKey) {
+                    return false;
+                }
                 if (!parsed.ok) {
-                    state.verifyRespondentIndexError = parsed.error || "Не удалось разобрать выгрузку OpenEnds.";
-                    console.warn("[QGA] VerifyMain: ошибка разбора выгрузки OpenEnds:", parsed.error);
+                    state.verifyRespondentIndexError =
+                        parsed.error || "Не удалось разобрать выгрузку OpenEnds.";
+                    console.warn(
+                        "[QGA] VerifyMain: ошибка разбора выгрузки OpenEnds:",
+                        parsed.error
+                    );
                     return false;
                 }
 
                 state.verifyRespondentIdsByOpenEndId = parsed.respondentIdsByOpenEndId;
                 state.verifyAnswersByRespondentId = parsed.answersByRespondentId;
-                state.verifyRespondentIdsByQuestionAndValue = parsed.respondentIdsByQuestionAndValue;
+                state.verifyRespondentIdsByQuestionAndValue =
+                    parsed.respondentIdsByQuestionAndValue;
                 state.verifyRespondentIdsByValueOnly = parsed.respondentIdsByValueOnly;
+                state.verifyRespondentIdsLookupCache = new Map();
                 state.verifyRespondentIndexLoaded = true;
-                console.info("[QGA] VerifyMain: индекс ответов респондентов успешно построен.");
+                console.info(
+                    "[QGA] VerifyMain: индекс ответов респондентов успешно построен."
+                );
                 return true;
             } catch (error) {
-                console.error("[QGA] VerifyMain: исключение при загрузке/разборе OpenEnds:", error);
-                state.verifyRespondentIndexError = "Ошибка сети или формата при загрузке выгрузки OpenEnds.";
+                console.error(
+                    "[QGA] VerifyMain: исключение при загрузке/разборе OpenEnds:",
+                    error
+                );
+                state.verifyRespondentIndexError =
+                    "Ошибка сети или формата при загрузке выгрузки OpenEnds.";
                 return false;
             } finally {
                 state.verifyRespondentIndexLoading = false;
@@ -110,7 +159,10 @@
         try {
             await sendManualBfridsToServer(projectId, normalized);
         } catch (error) {
-            console.error("[QGA] Ошибка при отправке bfrid в ручную чистку через API:", error);
+            console.error(
+                "[QGA] Ошибка при отправке bfrid в ручную чистку через API:",
+                error
+            );
             alert("Ошибка при отправке в ручную чистку. Подробности в консоли.");
             return;
         }

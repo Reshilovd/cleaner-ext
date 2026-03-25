@@ -1,6 +1,6 @@
 "use strict";
 
-    function parseOpenEndsFromXlsx(arrayBuffer) {
+    function parseOpenEndsFromXlsxSync(arrayBuffer) {
         if (!(arrayBuffer instanceof ArrayBuffer)) {
             return { ok: false, error: "Неверный формат данных при загрузке OpenEnds (ожидался ArrayBuffer)." };
         }
@@ -185,7 +185,7 @@
      * ReasonCodes может содержать несколько кодов через пробел (например "1 3 6").
      * Возвращает { ok: true, tokenReasonCodes: { [token]: number[] } } или { ok: false, error }.
      */
-    function parseRatingXlsx(arrayBuffer) {
+    function parseRatingXlsxSync(arrayBuffer) {
         if (!(arrayBuffer instanceof ArrayBuffer)) {
             return { ok: false, error: "Неверный формат данных (ожидался ArrayBuffer)." };
         }
@@ -231,6 +231,169 @@
             if (token) tokenReasonCodes[token] = codes;
         }
         return { ok: true, tokenReasonCodes };
+    }
+
+    var verifyXlsxBackgroundFallbackWarned =
+        typeof verifyXlsxBackgroundFallbackWarned !== "undefined" ? verifyXlsxBackgroundFallbackWarned : false;
+
+    function warnVerifyXlsxBackgroundFallback(reason, error) {
+        if (verifyXlsxBackgroundFallbackWarned) {
+            return;
+        }
+        verifyXlsxBackgroundFallbackWarned = true;
+        if (error) {
+            console.warn("[QGA] XLSX background parse unavailable, fallback to main thread:", reason, error);
+            return;
+        }
+        console.warn("[QGA] XLSX background parse unavailable, fallback to main thread:", reason);
+    }
+
+    function deserializeVerifyBackgroundParseResult(parserName, result) {
+        if (!result || typeof result !== "object") {
+            return { ok: false, error: `Background parser returned empty result for ${parserName}.` };
+        }
+
+        if (parserName !== "openends") {
+            return result;
+        }
+
+        return {
+            ok: true,
+            respondentIdsByOpenEndId: new Map(result.respondentIdsByOpenEndIdEntries || []),
+            answersByRespondentId: new Map(result.answersByRespondentIdEntries || []),
+            respondentIdsByQuestionAndValue: new Map(result.respondentIdsByQuestionAndValueEntries || []),
+            respondentIdsByValueOnly: new Map(result.respondentIdsByValueOnlyEntries || [])
+        };
+    }
+
+    function serializeVerifyArrayBufferForBackground(arrayBuffer) {
+        return new Promise((resolve, reject) => {
+            if (!(arrayBuffer instanceof ArrayBuffer)) {
+                reject(new Error("Неверный формат данных (ожидался ArrayBuffer)."));
+                return;
+            }
+
+            if (typeof Blob === "undefined" || typeof FileReader === "undefined") {
+                reject(new Error("Blob/FileReader is unavailable."));
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = () => {
+                if (typeof reader.result === "string" && reader.result) {
+                    resolve(reader.result);
+                    return;
+                }
+                reject(new Error("FileReader returned empty payload."));
+            };
+            reader.onerror = () => {
+                reject(reader.error || new Error("FileReader failed to serialize XLSX payload."));
+            };
+
+            reader.readAsDataURL(
+                new Blob([arrayBuffer], {
+                    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                })
+            );
+        });
+    }
+
+    async function requestVerifyXlsxBackgroundParse(parserName, arrayBuffer) {
+        if (
+            typeof chrome === "undefined" ||
+            !chrome.runtime ||
+            typeof chrome.runtime.sendMessage !== "function"
+        ) {
+            return { ok: false, error: "chrome.runtime.sendMessage is unavailable." };
+        }
+
+        let dataUrl = "";
+        try {
+            dataUrl = await serializeVerifyArrayBufferForBackground(arrayBuffer);
+        } catch (error) {
+            return {
+                ok: false,
+                error: String(error && error.message ? error.message : error)
+            };
+        }
+
+        return await new Promise((resolve) => {
+            try {
+                chrome.runtime.sendMessage(
+                    {
+                        target: "qga",
+                        type: "parse_xlsx",
+                        parser: parserName,
+                        dataUrl
+                    },
+                    (response) => {
+                        const runtimeError =
+                            chrome.runtime && chrome.runtime.lastError
+                                ? chrome.runtime.lastError
+                                : null;
+                        if (runtimeError) {
+                            resolve({
+                                ok: false,
+                                error: runtimeError.message || "runtime.sendMessage failed."
+                            });
+                            return;
+                        }
+                        if (!response || response.ok !== true) {
+                            resolve({
+                                ok: false,
+                                error:
+                                    response && response.error
+                                        ? response.error
+                                        : `Background parser failed for ${parserName}.`
+                            });
+                            return;
+                        }
+                        resolve({
+                            ok: true,
+                            result: deserializeVerifyBackgroundParseResult(parserName, response.result)
+                        });
+                    }
+                );
+            } catch (error) {
+                resolve({
+                    ok: false,
+                    error: String(error && error.message ? error.message : error)
+                });
+            }
+        });
+    }
+
+    async function parseVerifyXlsxOffMainThread(parserName, arrayBuffer, fallbackParser) {
+        if (!(arrayBuffer instanceof ArrayBuffer)) {
+            return fallbackParser(arrayBuffer);
+        }
+
+        const response = await requestVerifyXlsxBackgroundParse(parserName, arrayBuffer);
+        if (response.ok && response.result && response.result.ok) {
+            return response.result;
+        }
+
+        warnVerifyXlsxBackgroundFallback(
+            `background parse failed for ${parserName}`,
+            response && response.error ? response.error : null
+        );
+        return fallbackParser(arrayBuffer);
+    }
+
+    async function parseOpenEndsFromXlsx(arrayBuffer) {
+        return await parseVerifyXlsxOffMainThread(
+            "openends",
+            arrayBuffer,
+            parseOpenEndsFromXlsxSync
+        );
+    }
+
+    async function parseRatingXlsx(arrayBuffer) {
+        return await parseVerifyXlsxOffMainThread(
+            "rating",
+            arrayBuffer,
+            parseRatingXlsxSync
+        );
     }
 
     /** Маппинг token → reason codes из рейтинга для проекта. */
@@ -334,7 +497,7 @@
                 return false;
             }
             const buffer = await response.arrayBuffer();
-            const parsed = parseRatingXlsx(buffer);
+            const parsed = await parseRatingXlsx(buffer);
             if (!parsed.ok) {
                 console.warn("[QGA] Рейтинг: не удалось разобрать файл", parsed.error);
                 return false;

@@ -63,9 +63,6 @@
                         );
                         return;
                     }
-
-                    applyVerifyRowVisibility(gridRoot);
-
                     if (uniqueIds.length === 1) {
                         const respondentId = uniqueIds[0];
                         const answers =

@@ -100,13 +100,13 @@
         }
 
         if (listNode) {
-            listNode.innerHTML = "";
+            const fragment = document.createDocumentFragment();
 
             if (!answers || answers.length === 0) {
                 const empty = document.createElement("li");
                 empty.className = "qga-verify-modal__item";
                 empty.textContent = "Другие ответы этого респондента в выгрузке не найдены.";
-                listNode.appendChild(empty);
+                fragment.appendChild(empty);
             } else {
                 for (const answer of answers) {
                     const item = document.createElement("li");
@@ -122,9 +122,11 @@
 
                     item.appendChild(q);
                     item.appendChild(text);
-                    listNode.appendChild(item);
+                    fragment.appendChild(item);
                 }
             }
+
+            listNode.replaceChildren(fragment);
         }
 
         manualBfridsState = loadManualBfridsState();
@@ -250,6 +252,7 @@
             manualApiState = loadManualApiState();
             const alreadyInManualSet = getManualBfridsSetForProject(projectIdCandidates);
             const hasManualTokenCandidates = hasVerificationTokenForProject(projectIdCandidates);
+            const fragment = document.createDocumentFragment();
 
             if (!hasManualTokenCandidates && bodyNode) {
                 const manualHint = document.createElement("div");
@@ -401,8 +404,10 @@
                 manualRow.appendChild(document.createTextNode("В ручную чистку"));
                 headerItem.appendChild(manualRow);
 
-                listNode.appendChild(headerItem);
+                fragment.appendChild(headerItem);
             }
+
+            listNode.replaceChildren(fragment);
         }
 
         modal.style.display = "flex";

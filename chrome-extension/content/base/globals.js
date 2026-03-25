@@ -132,10 +132,12 @@ var state = typeof state !== "undefined" && state ? state : {
         verifyRespondentIndexLoading: false,
         verifyRespondentIndexPromise: null,
         verifyRespondentIndexError: null,
+        verifyRespondentIndexProjectId: null,
         verifyRespondentIdsByOpenEndId: null,
         verifyAnswersByRespondentId: null,
         verifyRespondentIdsByQuestionAndValue: null,
         verifyRespondentIdsByValueOnly: null,
+        verifyRespondentIdsLookupCache: new Map(),
         verifyQuestionCode: null,
         /** ID респондентов, отмеченных в модалке «Другие ответы» для добавления в ручную чистку при нажатии «Проверить страницу». */
         verifyPendingManualBfrids: new Set(),

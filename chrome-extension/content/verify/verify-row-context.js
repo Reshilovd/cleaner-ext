@@ -92,6 +92,29 @@
         return idPart + "||" + valuePart;
     }
 
+    function getVerifyRespondentIdsLookupCache() {
+        if (!(state.verifyRespondentIdsLookupCache instanceof Map)) {
+            state.verifyRespondentIdsLookupCache = new Map();
+        }
+        return state.verifyRespondentIdsLookupCache;
+    }
+
+    function buildVerifyRespondentLookupCacheKey(context) {
+        if (!context || (!context.openEndId && !context.valueText)) {
+            return null;
+        }
+
+        const projectKey = String(getProjectIdForVerify() || "").trim();
+        const openEndId = String(context.openEndId || "").trim();
+        const valueKey = buildVerifyValueOnlyKey(context.valueText || "");
+        const codes = getVerifyCodesForContext(context)
+            .map((code) => String(code || "").trim())
+            .filter(Boolean)
+            .sort();
+
+        return [projectKey, openEndId, valueKey, codes.join(";")].join("||");
+    }
+
     /** Возвращает число N (кол-во ID по ответу) из первой ячейки строки или null. */
     function getVerifyRowN(gridRoot, row) {
         if (!gridRoot || !row) return null;
@@ -143,6 +166,11 @@
         const idsByQuestionAndValue = state.verifyRespondentIdsByQuestionAndValue;
         const idsByValueOnly = state.verifyRespondentIdsByValueOnly;
         if (!respondentIdsByOpenEndId && !idsByQuestionAndValue && !idsByValueOnly) return [];
+        const cacheKey = buildVerifyRespondentLookupCacheKey(context);
+        const lookupCache = getVerifyRespondentIdsLookupCache();
+        if (cacheKey && lookupCache.has(cacheKey)) {
+            return lookupCache.get(cacheKey).slice();
+        }
         let respondentIds = [];
         if (respondentIdsByOpenEndId && respondentIdsByOpenEndId.size > 0) {
             if (respondentIds.length === 0) {
@@ -248,7 +276,11 @@
                 }
             }
         }
-        return Array.from(new Set(respondentIds.map((id) => String(id))));
+        const uniqueIds = Array.from(new Set(respondentIds.map((id) => String(id))));
+        if (cacheKey) {
+            lookupCache.set(cacheKey, uniqueIds);
+        }
+        return uniqueIds.slice();
     }
 
     /** Возвращает массив respondent IDs для строки (читает контекст из DOM строки). */
