@@ -1,61 +1,5 @@
 "use strict";
 
-    function escapeRegExp(value) {
-        return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    }
-
-    function uniqStrings(values) {
-        const seen = new Set();
-        const result = [];
-
-        for (const value of values) {
-            if (!value || seen.has(value)) {
-                continue;
-            }
-            seen.add(value);
-            result.push(value);
-        }
-
-        return result;
-    }
-
-    function loadStoredState() {
-        try {
-            const raw = localStorage.getItem(STORAGE_KEY);
-            if (!raw) {
-                return;
-            }
-            const stored = JSON.parse(raw);
-            if (!stored || typeof stored !== "object") {
-                return;
-            }
-            if (stored.settings && typeof stored.settings === "object") {
-                state.settings = { ...DEFAULT_SETTINGS, ...stored.settings };
-            }
-            if (stored.mode === "exact" || stored.mode === "similar") {
-                state.mode = stored.mode;
-            }
-            if (typeof stored.threshold === "number") {
-                state.threshold = clamp(stored.threshold, 0.5, 1);
-            }
-            if (Array.isArray(stored.processedKeys)) {
-                state.processedKeys = new Set(stored.processedKeys);
-            }
-        } catch (error) {
-            console.warn("[QGA] Не удалось загрузить состояние:", error);
-        }
-    }
-
-    function saveStoredState() {
-        const payload = {
-            settings: state.settings,
-            mode: state.mode,
-            threshold: state.threshold,
-            processedKeys: Array.from(state.processedKeys)
-        };
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-    }
-
     function injectStyles() {
         const style = document.createElement("style");
         style.textContent = `
@@ -198,7 +142,7 @@
                 margin-bottom: 8px;
             }
             #${PANEL_ID} .qga-group.qga-group--processed .qga-group-title::before {
-                content: "✓ ";
+                content: "вњ“ ";
                 color: #059669;
                 font-weight: 700;
             }
@@ -628,7 +572,7 @@
             .qga-cleaner-project-fav-btn-clicked {
                 scale: 1.3;
             }
-            /* Расширяем первую колонку таблицы проектов, чтобы звезда полностью помещалась */
+            /* Р Р°СЃС€РёСЂСЏРµРј РїРµСЂРІСѓСЋ РєРѕР»РѕРЅРєСѓ С‚Р°Р±Р»РёС†С‹ РїСЂРѕРµРєС‚РѕРІ, С‡С‚РѕР±С‹ Р·РІРµР·РґР° РїРѕР»РЅРѕСЃС‚СЊСЋ РїРѕРјРµС‰Р°Р»Р°СЃСЊ */
             .k-grid-content tbody tr td:first-child,
             .k-grid-header tbody tr th:first-child {
                 min-width: 40px !important;
