@@ -168,6 +168,9 @@ var state = typeof state !== "undefined" && state ? state : {
         cleanerProjectsFavoritesOnlyToggleEl: null,
         cleanerProjectsFavoritesOnlyUiScheduled: false,
         cleanerProjectsFavoritesOnlyObserverThrottleMs: 200,
+        cleanerProjectsFavoritesOnlyPreviousPageSize: null,
+        cleanerProjectsFavoritesOnlyPreviousPage: null,
+        cleanerProjectsFavoritesOnlyAllModeActive: false,
         pyrusGroupsExpandedByExtension: new Set()
     };
 

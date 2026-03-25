@@ -91,9 +91,295 @@
         return null;
     }
 
+    function getCleanerProjectsGridInstance(gridRoot) {
+        if (!gridRoot || typeof window.jQuery !== "function") return null;
+        try {
+            return window.jQuery(gridRoot).data("kendoGrid") || null;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function getCleanerProjectsPagerSelect(gridRoot) {
+        if (!(gridRoot instanceof Element)) return null;
+        const pager = gridRoot.querySelector(".k-pager-wrap, .k-grid-pager");
+        if (!(pager instanceof Element)) return null;
+
+        const sizesContainer =
+            pager.querySelector(".k-pager-sizes") ||
+            pager.querySelector("[data-role='dropdownlist']") ||
+            pager;
+
+        const select = sizesContainer.querySelector("select");
+        return select instanceof HTMLSelectElement ? select : null;
+    }
+
+    function normalizeCleanerProjectsPagerValue(value) {
+        return normalizeSingleLine(String(value || "")).toLowerCase();
+    }
+
+    function isCleanerProjectsAllPageSizeOption(option) {
+        if (!(option instanceof HTMLOptionElement)) return false;
+        const text = normalizeCleanerProjectsPagerValue(option.textContent || "");
+        const value = normalizeCleanerProjectsPagerValue(option.value || "");
+        if (!text && !value) return false;
+
+        return (
+            text === "all" ||
+            text === "все" ||
+            text.includes("all") ||
+            text.includes("все") ||
+            value === "all"
+        );
+    }
+
+    function findCleanerProjectsAllPageSizeOption(select) {
+        if (!(select instanceof HTMLSelectElement)) return null;
+        const options = Array.from(select.options || []);
+        return options.find((option) => isCleanerProjectsAllPageSizeOption(option)) || null;
+    }
+
+    function findCleanerProjectsLargestNumericPageSizeOption(select) {
+        if (!(select instanceof HTMLSelectElement)) return null;
+        const options = Array.from(select.options || []);
+
+        let best = null;
+        let bestValue = -Infinity;
+        for (const option of options) {
+            const numeric = Number.parseInt(option.value, 10);
+            if (!Number.isFinite(numeric)) continue;
+            if (numeric > bestValue) {
+                bestValue = numeric;
+                best = option;
+            }
+        }
+
+        return best;
+    }
+
+    function getCleanerProjectsCurrentPageSizeValue(gridRoot, select) {
+        const pagerSelect = select instanceof HTMLSelectElement ? select : getCleanerProjectsPagerSelect(gridRoot);
+        if (pagerSelect instanceof HTMLSelectElement) {
+            return String(pagerSelect.value || "");
+        }
+
+        const grid = getCleanerProjectsGridInstance(gridRoot);
+        const pageSize = grid && grid.dataSource && typeof grid.dataSource.pageSize === "function"
+            ? Number.parseInt(grid.dataSource.pageSize(), 10)
+            : NaN;
+
+        return Number.isFinite(pageSize) && pageSize > 0 ? String(pageSize) : "";
+    }
+
+    function getCleanerProjectsCurrentPage(gridRoot) {
+        const grid = getCleanerProjectsGridInstance(gridRoot);
+        const page = grid && grid.dataSource && typeof grid.dataSource.page === "function"
+            ? Number.parseInt(grid.dataSource.page(), 10)
+            : NaN;
+
+        return Number.isFinite(page) && page > 0 ? page : 1;
+    }
+
+    function setCleanerProjectsGridPage(gridRoot, pageNumber) {
+        const targetPage = Number.parseInt(pageNumber, 10);
+        if (!Number.isFinite(targetPage) || targetPage < 1) return false;
+
+        const grid = getCleanerProjectsGridInstance(gridRoot);
+        if (!grid || !grid.dataSource || typeof grid.dataSource.page !== "function") return false;
+
+        try {
+            const currentPage = Number.parseInt(grid.dataSource.page(), 10);
+            if (Number.isFinite(currentPage) && currentPage === targetPage) {
+                return false;
+            }
+            grid.dataSource.page(targetPage);
+            return true;
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function scheduleCleanerProjectsGridPageRestore(gridRoot, pageNumber) {
+        const targetPage = Number.parseInt(pageNumber, 10);
+        if (!Number.isFinite(targetPage) || targetPage < 2) return;
+
+        const grid = getCleanerProjectsGridInstance(gridRoot);
+        if (!grid || typeof grid.one !== "function") return;
+
+        grid.one("dataBound", () => {
+            setTimeout(() => {
+                setCleanerProjectsGridPage(gridRoot, targetPage);
+            }, 0);
+        });
+    }
+
+    function setCleanerProjectsPagerSelectValue(select, targetValue) {
+        if (!(select instanceof HTMLSelectElement)) return { ensured: false, changed: false };
+
+        const currentValue = normalizeCleanerProjectsPagerValue(select.value || "");
+        const normalizedTarget = normalizeCleanerProjectsPagerValue(targetValue);
+        if (!normalizedTarget) return { ensured: false, changed: false };
+
+        if (currentValue === normalizedTarget) {
+            return { ensured: true, changed: false };
+        }
+
+        const options = Array.from(select.options || []);
+        const targetOption = options.find((option) => {
+            const optionValue = normalizeCleanerProjectsPagerValue(option.value || "");
+            const optionText = normalizeCleanerProjectsPagerValue(option.textContent || "");
+            return optionValue === normalizedTarget || optionText === normalizedTarget;
+        });
+
+        if (!targetOption) {
+            return { ensured: false, changed: false };
+        }
+
+        select.value = targetOption.value;
+        select.dispatchEvent(new Event("change", { bubbles: true }));
+        select.dispatchEvent(new Event("input", { bubbles: true }));
+        return { ensured: true, changed: true };
+    }
+
+    function setCleanerProjectsGridPageSize(gridRoot, targetValue) {
+        const select = getCleanerProjectsPagerSelect(gridRoot);
+        const selectResult = setCleanerProjectsPagerSelectValue(select, targetValue);
+        if (selectResult.ensured) {
+            return selectResult;
+        }
+
+        const numericTarget = Number.parseInt(targetValue, 10);
+        if (!Number.isFinite(numericTarget) || numericTarget < 1) {
+            return { ensured: false, changed: false };
+        }
+
+        const grid = getCleanerProjectsGridInstance(gridRoot);
+        if (!grid || !grid.dataSource || typeof grid.dataSource.pageSize !== "function") {
+            return { ensured: false, changed: false };
+        }
+
+        try {
+            const currentPageSize = Number.parseInt(grid.dataSource.pageSize(), 10);
+            if (Number.isFinite(currentPageSize) && currentPageSize === numericTarget) {
+                return { ensured: true, changed: false };
+            }
+            if (typeof grid.dataSource.page === "function") {
+                grid.dataSource.page(1);
+            }
+            grid.dataSource.pageSize(numericTarget);
+            return { ensured: true, changed: true };
+        } catch (e) {
+            return { ensured: false, changed: false };
+        }
+    }
+
+    function isCleanerProjectsGridShowingAll(gridRoot) {
+        const select = getCleanerProjectsPagerSelect(gridRoot);
+        if (select instanceof HTMLSelectElement) {
+            const selectedOption = select.selectedIndex >= 0 ? select.options[select.selectedIndex] : null;
+            if (isCleanerProjectsAllPageSizeOption(selectedOption)) {
+                return true;
+            }
+        }
+
+        const grid = getCleanerProjectsGridInstance(gridRoot);
+        const pageSize = grid && grid.dataSource && typeof grid.dataSource.pageSize === "function"
+            ? Number.parseInt(grid.dataSource.pageSize(), 10)
+            : NaN;
+        const total = grid && grid.dataSource && typeof grid.dataSource.total === "function"
+            ? Number.parseInt(grid.dataSource.total(), 10)
+            : NaN;
+
+        return (
+            Number.isFinite(pageSize) &&
+            pageSize > 0 &&
+            Number.isFinite(total) &&
+            total >= 0 &&
+            pageSize >= total
+        );
+    }
+
+    function ensureCleanerProjectsGridPageSizeAll(gridRoot) {
+        const select = getCleanerProjectsPagerSelect(gridRoot);
+        const allOption = findCleanerProjectsAllPageSizeOption(select);
+        if (allOption) {
+            return setCleanerProjectsPagerSelectValue(select, allOption.value);
+        }
+
+        const grid = getCleanerProjectsGridInstance(gridRoot);
+        const total = grid && grid.dataSource && typeof grid.dataSource.total === "function"
+            ? Number.parseInt(grid.dataSource.total(), 10)
+            : NaN;
+        if (Number.isFinite(total) && total > 0) {
+            return setCleanerProjectsGridPageSize(gridRoot, String(total));
+        }
+
+        const largestOption = findCleanerProjectsLargestNumericPageSizeOption(select);
+        if (largestOption) {
+            return setCleanerProjectsPagerSelectValue(select, largestOption.value);
+        }
+
+        return { ensured: false, changed: false };
+    }
+
+    function syncCleanerProjectsFavoritesOnlyGridState(gridRoot) {
+        if (!gridRoot) return { ensured: false, changed: false };
+
+        if (state.cleanerProjectsFavoritesOnlyEnabled) {
+            if (isCleanerProjectsGridShowingAll(gridRoot)) {
+                return { ensured: true, changed: false };
+            }
+
+            if (!state.cleanerProjectsFavoritesOnlyAllModeActive) {
+                state.cleanerProjectsFavoritesOnlyPreviousPageSize = getCleanerProjectsCurrentPageSizeValue(gridRoot);
+                state.cleanerProjectsFavoritesOnlyPreviousPage = getCleanerProjectsCurrentPage(gridRoot);
+            }
+
+            const result = ensureCleanerProjectsGridPageSizeAll(gridRoot);
+            if (result.changed) {
+                state.cleanerProjectsFavoritesOnlyAllModeActive = true;
+            }
+            return result;
+        }
+
+        if (!state.cleanerProjectsFavoritesOnlyAllModeActive) {
+            return { ensured: true, changed: false };
+        }
+
+        const restorePageSize = state.cleanerProjectsFavoritesOnlyPreviousPageSize;
+        const restorePage = state.cleanerProjectsFavoritesOnlyPreviousPage;
+
+        state.cleanerProjectsFavoritesOnlyAllModeActive = false;
+        state.cleanerProjectsFavoritesOnlyPreviousPageSize = null;
+        state.cleanerProjectsFavoritesOnlyPreviousPage = null;
+
+        if (!restorePageSize) {
+            return { ensured: true, changed: false };
+        }
+
+        const currentPageSize = getCleanerProjectsCurrentPageSizeValue(gridRoot);
+        const shouldSchedulePageRestore =
+            normalizeCleanerProjectsPagerValue(currentPageSize) !==
+            normalizeCleanerProjectsPagerValue(restorePageSize);
+        if (shouldSchedulePageRestore) {
+            scheduleCleanerProjectsGridPageRestore(gridRoot, restorePage);
+        }
+
+        const restoreResult = setCleanerProjectsGridPageSize(gridRoot, restorePageSize);
+        if (restoreResult.changed) {
+            return restoreResult;
+        }
+
+        setCleanerProjectsGridPage(gridRoot, restorePage);
+        return restoreResult;
+    }
+
     function applyCleanerProjectsFavoritesOnlyFilter() {
         const gridRoot = getCleanerProjectsGridRootForFavorites();
         if (!gridRoot) return;
+
+        const gridStateResult = syncCleanerProjectsFavoritesOnlyGridState(gridRoot);
+        if (gridStateResult.changed) return;
 
         if (state.cleanerProjectsIdColumnIndex < 0) {
             state.cleanerProjectsIdColumnIndex = findCleanerProjectsIdHeaderIndex(gridRoot);
@@ -356,6 +642,9 @@
         const gridRoot = getCleanerProjectsGridRootForFavorites();
         if (!gridRoot) return;
 
+        const gridStateResult = syncCleanerProjectsFavoritesOnlyGridState(gridRoot);
+        if (gridStateResult.changed) return;
+
         if (state.cleanerProjectsIdColumnIndex < 0) {
             state.cleanerProjectsIdColumnIndex = findCleanerProjectsIdHeaderIndex(gridRoot);
         }
@@ -472,5 +761,4 @@
             btn.classList.toggle("qga-cleaner-project-fav-btn--fav", isFav);
         }
     }
- "use strict";
 
