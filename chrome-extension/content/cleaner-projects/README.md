@@ -4,8 +4,8 @@
 
 Что здесь лежит:
 
-- `02-cleaner-projects-author-filter.js` — фильтр по авторам, кеширование списка авторов, применение фильтра к гриду.
-- `02-cleaner-projects-favorites.js` — избранное, toggle `Только избранные`, сохранение состояния в localStorage.
+- `cleaner-projects-author-filter.js` — фильтр по авторам, кеширование списка авторов, применение фильтра к гриду.
+- `cleaner-projects-favorites.js` — избранное, toggle `Только избранные`, сохранение состояния в localStorage.
 
 Важно:
 

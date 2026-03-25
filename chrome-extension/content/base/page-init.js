@@ -27,7 +27,6 @@
 
     function initOpenEndsMode() {
         loadStoredState();
-        injectStyles();
         bindRuntimeMessages();
         waitForBody(() => {
             buildPanel();
@@ -167,7 +166,6 @@
 
     function initCleanerProjectsMode() {
         waitForBody(() => {
-            injectStyles();
             removeCleanerFillButtonIfExists();
             setupCleanerProjectsAuthorFilter();
             setupCleanerProjectsFavorites();

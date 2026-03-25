@@ -4,9 +4,9 @@
 
 Что здесь лежит:
 
-- `06-openends-data.js` — извлечение строк, нормализация текста, построение групп, `DisjointSet`.
-- `06-openends-actions.js` — выделение, выбор, bulk grouping, работа с pager и контролами выбора.
-- `06-openends-ui.js` — построение панели, rescan, статистика, progress bar, рендер списка кластеров.
+- `openends-data.js` — извлечение строк, нормализация текста, построение групп, `DisjointSet`.
+- `openends-actions.js` — выделение, выбор, bulk grouping, работа с pager и контролами выбора.
+- `openends-ui.js` — построение панели, rescan, статистика, progress bar, рендер списка кластеров.
 
 Важно:
 

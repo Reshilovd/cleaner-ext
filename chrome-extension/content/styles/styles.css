@@ -1,9 +1,4 @@
-"use strict";
-
-    function injectStyles() {
-        const style = document.createElement("style");
-        style.textContent = `
-            #${PANEL_ID} {
+            #qga-panel {
                 position: fixed;
                 top: 12px;
                 right: 12px;
@@ -20,35 +15,35 @@
                 flex-direction: column;
                 overflow: hidden;
             }
-            #${PANEL_ID} * {
+            #qga-panel * {
                 box-sizing: border-box;
             }
-            #${PANEL_ID} .qga-header {
+            #qga-panel .qga-header {
                 background: #111827;
                 color: #f9fafb;
                 padding: 10px 12px;
                 font-size: 13px;
                 font-weight: 600;
             }
-            #${PANEL_ID} .qga-section {
+            #qga-panel .qga-section {
                 padding: 10px 12px;
                 border-bottom: 1px solid #e5e7eb;
             }
-            #${PANEL_ID} .qga-row {
+            #qga-panel .qga-row {
                 display: grid;
                 grid-template-columns: 1fr 1fr;
                 gap: 8px;
                 margin-bottom: 8px;
             }
-            #${PANEL_ID} label {
+            #qga-panel label {
                 display: block;
                 margin-bottom: 4px;
                 color: #4b5563;
                 font-size: 11px;
             }
-            #${PANEL_ID} input[type='text'],
-            #${PANEL_ID} input[type='number'],
-            #${PANEL_ID} select {
+            #qga-panel input[type='text'],
+            #qga-panel input[type='number'],
+            #qga-panel select {
                 width: 100%;
                 border: 1px solid #d1d5db;
                 border-radius: 6px;
@@ -56,13 +51,13 @@
                 font-size: 12px;
                 background: #ffffff;
             }
-            #${PANEL_ID} .qga-actions {
+            #qga-panel .qga-actions {
                 display: flex;
                 flex-wrap: wrap;
                 gap: 6px;
                 margin-top: 6px;
             }
-            #${PANEL_ID} button {
+            #qga-panel button {
                 border: 1px solid #cbd5e1;
                 border-radius: 6px;
                 padding: 6px 8px;
@@ -70,14 +65,14 @@
                 cursor: pointer;
                 font-size: 11px;
             }
-            #${PANEL_ID} button:hover {
+            #qga-panel button:hover {
                 background: #eef2ff;
             }
-            #${PANEL_ID} .qga-stats {
+            #qga-panel .qga-stats {
                 color: #1f2937;
                 font-size: 11px;
             }
-            #${PANEL_ID} .qga-stats-row {
+            #qga-panel .qga-stats-row {
                 display: flex;
                 align-items: center;
                 justify-content: space-between;
@@ -85,29 +80,29 @@
                 margin-bottom: 4px;
                 min-height: 18px;
             }
-            #${PANEL_ID} .qga-progress-wrap {
+            #qga-panel .qga-progress-wrap {
                 margin-bottom: 8px;
                 display: none;
             }
-            #${PANEL_ID} .qga-progress-wrap.qga-progress-visible {
+            #qga-panel .qga-progress-wrap.qga-progress-visible {
                 display: block;
             }
-            #${PANEL_ID} .qga-progress-bar {
+            #qga-panel .qga-progress-bar {
                 height: 8px;
                 background: #e5e7eb;
                 border-radius: 4px;
                 overflow: hidden;
             }
-            #${PANEL_ID} .qga-progress-fill {
+            #qga-panel .qga-progress-fill {
                 height: 100%;
                 background: #6366f1;
                 border-radius: 4px;
                 transition: width 0.2s ease;
             }
-            #${PANEL_ID} .qga-progress-text {
+            #qga-panel .qga-progress-text {
                 display: none;
             }
-            #${PANEL_ID} .qga-loading {
+            #qga-panel .qga-loading {
                 display: inline-flex;
                 align-items: center;
                 justify-content: center;
@@ -115,7 +110,7 @@
                 font-size: 11px;
                 color: #6b7280;
             }
-            #${PANEL_ID} .qga-spinner {
+            #qga-panel .qga-spinner {
                 width: 12px;
                 height: 12px;
                 border-radius: 999px;
@@ -128,30 +123,30 @@
                     transform: rotate(360deg);
                 }
             }
-            #${PANEL_ID} .qga-list {
+            #qga-panel .qga-list {
                 list-style: none;
                 margin: 0;
                 padding: 0;
                 overflow: auto;
                 max-height: 44vh;
             }
-            #${PANEL_ID} .qga-group {
+            #qga-panel .qga-group {
                 border: 1px solid #e5e7eb;
                 border-radius: 8px;
                 padding: 8px;
                 margin-bottom: 8px;
             }
-            #${PANEL_ID} .qga-group.qga-group--processed .qga-group-title::before {
-                content: "вњ“ ";
+            #qga-panel .qga-group.qga-group--processed .qga-group-title::before {
+                content: "\2713 ";
                 color: #059669;
                 font-weight: 700;
             }
-            #${PANEL_ID} .qga-group-title {
+            #qga-panel .qga-group-title {
                 font-weight: 600;
                 margin-bottom: 4px;
                 font-size: 12px;
             }
-            #${PANEL_ID} .qga-group-sample {
+            #qga-panel .qga-group-sample {
                 margin: 0 0 6px 0;
                 color: #4b5563;
                 font-size: 11px;
@@ -159,20 +154,20 @@
                 white-space: pre-wrap;
                 word-break: break-word;
             }
-            #${PANEL_ID} .qga-inline-actions {
+            #qga-panel .qga-inline-actions {
                 display: flex;
                 gap: 6px;
                 flex-wrap: wrap;
             }
-            #${PANEL_ID}.qga-bulk-running .qga-group {
+            #qga-panel.qga-bulk-running .qga-group {
                 background-color: #f3f4f6;
             }
-            #${PANEL_ID}.qga-bulk-running .qga-group button {
+            #qga-panel.qga-bulk-running .qga-group button {
                 pointer-events: none;
                 opacity: 0.6;
                 cursor: not-allowed;
             }
-            .${HIGHLIGHT_CLASS} {
+            .qga-highlight {
                 outline: 2px solid #f59e0b !important;
                 outline-offset: 2px !important;
                 background-color: rgba(245, 158, 11, 0.08) !important;
@@ -606,6 +601,4 @@
                 height: 14px;
                 margin: 0;
             }
-        `;
-        document.documentElement.appendChild(style);
-    }
+        
