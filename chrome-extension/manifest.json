@@ -39,7 +39,13 @@
         "content/03-cleaner-autofill.js",
         "content/04-storage.js",
         "content/05-styles.js",
-        "content/05-verify.js",
+        "content/05-verify-question-utils.js",
+        "content/05-verify-manual-storage.js",
+        "content/05-verify-rating.js",
+        "content/05-verify-modal.js",
+        "content/05-verify-row-context.js",
+        "content/05-verify-index.js",
+        "content/05-verify-row-decorate.js",
         "content/06-openends-panel.js"
       ],
       "run_at": "document_idle"
