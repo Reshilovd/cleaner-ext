@@ -31,6 +31,7 @@
         waitForBody(() => {
             buildPanel();
             hidePanel();
+            setupProjectEditStatsWidget();
             setupManualPageIntegration();
             setupOpenEndsVerifyShortcut();
             const scheduleCollectGroups = () => {

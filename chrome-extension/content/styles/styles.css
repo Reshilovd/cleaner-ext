@@ -601,4 +601,29 @@
                 height: 14px;
                 margin: 0;
             }
+            .qga-project-edit-stats-host {
+                position: relative;
+                padding-right: 54px;
+            }
+            .qga-project-edit-stats-host--danger {
+                background: #fee2e2 !important;
+                border-color: #fca5a5 !important;
+            }
+            .qga-project-edit-stats-host--danger a,
+            .qga-project-edit-stats-host--danger .c_box_content {
+                color: #b91c1c !important;
+            }
+            .qga-project-edit-stats-percent {
+                position: absolute;
+                right: 12px;
+                bottom: 10px;
+                color: #2563eb;
+                font: 700 16px/1 "Segoe UI", Tahoma, sans-serif;
+                white-space: nowrap;
+                pointer-events: none;
+                user-select: none;
+            }
+            .qga-project-edit-stats-host--danger .qga-project-edit-stats-percent {
+                color: #b91c1c;
+            }
         

@@ -47,6 +47,7 @@
         "content/verify/verify-question-utils.js",
         "content/verify/verify-manual-storage.js",
         "content/verify/verify-rating.js",
+        "content/verify/project-edit-stats.js",
         "content/verify/verify-modal.js",
         "content/verify/verify-row-context.js",
         "content/verify/verify-index.js",
