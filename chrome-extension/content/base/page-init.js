@@ -32,6 +32,9 @@
             buildPanel();
             hidePanel();
             setupProjectEditStatsWidget();
+            if (typeof setupProjectEditPenaltyToggle === "function") {
+                setupProjectEditPenaltyToggle();
+            }
             setupManualPageIntegration();
             setupOpenEndsVerifyShortcut();
             const scheduleCollectGroups = () => {
