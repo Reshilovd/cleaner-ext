@@ -1603,7 +1603,7 @@ function toggleProjectEditPenaltySwitchInput(input) {
             ? getProjectEditPenaltyResolvedState(dataItem, rowKey)
             : projectEditPenaltyToggleState.get(rowKey) === true;
     const previousAutoCheckText = getProjectEditPenaltyAutoCheckCellDisplayText(row);
-    const bridgeRequest = !dataItem ? requestProjectEditPenaltyBridgeToggle(row, !previousChecked) : null;
+    const bridgeRequest = requestProjectEditPenaltyBridgeToggle(row, !previousChecked);
 
     if (bridgeRequest) {
         const nextChecked = !previousChecked;
@@ -2213,6 +2213,28 @@ function projectEditPenaltyPageBridgeBootstrap() {
 
     async function sendGroupUpdate(dataItem, autoCheckData, autoCheckString) {
         const payload = buildGroupUpdatePayload(dataItem, autoCheckData, autoCheckString);
+
+        if (typeof window.jQuery === "function" && window.jQuery.ajax) {
+            return await new Promise((resolve, reject) => {
+                window.jQuery.ajax({
+                    url: UPDATE_URL,
+                    type: "POST",
+                    data: payload,
+                    contentType: "application/x-www-form-urlencoded; charset=UTF-8",
+                    processData: false,
+                    headers: {
+                        "X-Requested-With": "XMLHttpRequest"
+                    }
+                })
+                    .done((response) => {
+                        resolve(response);
+                    })
+                    .fail((jqXHR, textStatus, errorThrown) => {
+                        reject(parseJqueryAjaxError(jqXHR, textStatus, errorThrown));
+                    });
+            });
+        }
+
         const response = await fetch(UPDATE_URL, {
             method: "POST",
             credentials: "include",
@@ -2233,6 +2255,18 @@ function projectEditPenaltyPageBridgeBootstrap() {
         return responseData;
     }
 
+    function parseJqueryAjaxError(jqXHR, textStatus, errorThrown) {
+        if (jqXHR && typeof jqXHR.responseJSON !== "undefined" && jqXHR.responseJSON != null) {
+            return jqXHR.responseJSON;
+        }
+
+        if (jqXHR && typeof jqXHR.responseText === "string" && jqXHR.responseText.trim()) {
+            return parseResponseText(jqXHR.responseText);
+        }
+
+        return errorThrown || textStatus || jqXHR || new Error("Penalty bridge jQuery.ajax request failed");
+    }
+
     function parseResponseText(responseText) {
         const text = String(responseText || "").trim();
         if (!text) {
@@ -2249,7 +2283,7 @@ function projectEditPenaltyPageBridgeBootstrap() {
     function buildGroupUpdatePayload(dataItem, autoCheckData, autoCheckString) {
         const params = new URLSearchParams();
         const normalizedAutoCheckData = Array.isArray(autoCheckData) ? autoCheckData : [];
-        const shouldSendAutoCheckData = normalizedAutoCheckData.length > 1;
+        const shouldSendAutoCheckData = normalizedAutoCheckData.length > 0;
 
         params.set("sort", "");
         params.set("group", "");
@@ -2558,6 +2592,19 @@ function setProjectEditPenaltyDataItemField(dataItem, fieldName, value) {
 function sendProjectEditPenaltyGroupUpdate(dataItem, autoCheckData, autoCheckString) {
     const payload = buildProjectEditPenaltyGroupUpdatePayload(dataItem, autoCheckData, autoCheckString);
 
+    if (typeof window.jQuery === "function" && window.jQuery.ajax) {
+        return window.jQuery.ajax({
+            url: PROJECT_EDIT_PENALTY_UPDATE_URL,
+            type: "POST",
+            data: payload,
+            contentType: "application/x-www-form-urlencoded; charset=UTF-8",
+            processData: false,
+            headers: {
+                "X-Requested-With": "XMLHttpRequest"
+            }
+        });
+    }
+
     if (typeof fetch === "function") {
         return createProjectEditPenaltyAsyncRequest(
             fetch(PROJECT_EDIT_PENALTY_UPDATE_URL, {
@@ -2582,20 +2629,7 @@ function sendProjectEditPenaltyGroupUpdate(dataItem, autoCheckData, autoCheckStr
         );
     }
 
-    if (typeof window.jQuery !== "function" || !window.jQuery.ajax) {
-        return createProjectEditPenaltyAsyncRequest(Promise.reject(new Error("Penalty toggle transport is unavailable")));
-    }
-
-    return window.jQuery.ajax({
-        url: PROJECT_EDIT_PENALTY_UPDATE_URL,
-        type: "POST",
-        data: payload,
-        contentType: "application/x-www-form-urlencoded; charset=UTF-8",
-        processData: false,
-        headers: {
-            "X-Requested-With": "XMLHttpRequest"
-        }
-    });
+    return createProjectEditPenaltyAsyncRequest(Promise.reject(new Error("Penalty toggle transport is unavailable")));
 }
 
 function createProjectEditPenaltyAsyncRequest(promise) {
@@ -2652,7 +2686,7 @@ function parseProjectEditPenaltyResponseText(responseText) {
 function buildProjectEditPenaltyGroupUpdatePayload(dataItem, autoCheckData, autoCheckString) {
     const params = new URLSearchParams();
     const normalizedAutoCheckData = Array.isArray(autoCheckData) ? autoCheckData : [];
-    const shouldSendAutoCheckData = normalizedAutoCheckData.length > 1;
+    const shouldSendAutoCheckData = normalizedAutoCheckData.length > 0;
 
     params.set("sort", "");
     params.set("group", "");

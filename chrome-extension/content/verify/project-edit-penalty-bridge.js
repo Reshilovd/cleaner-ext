@@ -362,6 +362,28 @@
 
     async function sendGroupUpdate(dataItem, autoCheckData, autoCheckString) {
         const payload = buildGroupUpdatePayload(dataItem, autoCheckData, autoCheckString);
+
+        if (typeof window.jQuery === "function" && window.jQuery.ajax) {
+            return await new Promise((resolve, reject) => {
+                window.jQuery.ajax({
+                    url: UPDATE_URL,
+                    type: "POST",
+                    data: payload,
+                    contentType: "application/x-www-form-urlencoded; charset=UTF-8",
+                    processData: false,
+                    headers: {
+                        "X-Requested-With": "XMLHttpRequest"
+                    }
+                })
+                    .done((response) => {
+                        resolve(response);
+                    })
+                    .fail((jqXHR, textStatus, errorThrown) => {
+                        reject(parseJqueryAjaxError(jqXHR, textStatus, errorThrown));
+                    });
+            });
+        }
+
         const response = await fetch(UPDATE_URL, {
             method: "POST",
             credentials: "include",
@@ -382,6 +404,18 @@
         return responseData;
     }
 
+    function parseJqueryAjaxError(jqXHR, textStatus, errorThrown) {
+        if (jqXHR && typeof jqXHR.responseJSON !== "undefined" && jqXHR.responseJSON != null) {
+            return jqXHR.responseJSON;
+        }
+
+        if (jqXHR && typeof jqXHR.responseText === "string" && jqXHR.responseText.trim()) {
+            return parseResponseText(jqXHR.responseText);
+        }
+
+        return errorThrown || textStatus || jqXHR || new Error("Penalty bridge jQuery.ajax request failed");
+    }
+
     function parseResponseText(responseText) {
         const text = String(responseText || "").trim();
         if (!text) {
@@ -398,7 +432,7 @@
     function buildGroupUpdatePayload(dataItem, autoCheckData, autoCheckString) {
         const params = new URLSearchParams();
         const normalizedAutoCheckData = Array.isArray(autoCheckData) ? autoCheckData : [];
-        const shouldSendAutoCheckData = normalizedAutoCheckData.length > 1;
+        const shouldSendAutoCheckData = normalizedAutoCheckData.length > 0;
 
         params.set("sort", "");
         params.set("group", "");
