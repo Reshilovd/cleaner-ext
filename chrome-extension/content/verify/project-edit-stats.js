@@ -429,7 +429,7 @@ function ensureProjectEditStatsBreakdownCard(statsRow, referenceCard) {
         grid = document.createElement("div");
         grid.className = PROJECT_EDIT_STATS_BREAKDOWN_GRID_CLASS;
         grid.appendChild(
-            buildProjectEditStatsBreakdownPart("incorrect", "OpenEnds.", "Некорректные по OpenEnds")
+            buildProjectEditStatsBreakdownPart("incorrect", "OpenEnds", "Некорректные по OpenEnds")
         );
         grid.appendChild(
             buildProjectEditStatsBreakdownPart("speedster", "Спидстеры", "Спидстеры")
