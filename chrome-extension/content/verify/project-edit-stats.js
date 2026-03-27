@@ -365,6 +365,7 @@ function syncProjectEditStatsBreakdownPartShell(part, labelReferenceCard, percen
             height: "auto",
             margin: "0",
             display: "block",
+            lineHeight: "22px",
             textAlign: "left",
             whiteSpace: "nowrap",
             overflow: "hidden",
