@@ -568,13 +568,3 @@
         // POST /api/Project/Manual/{ProjectId} — как в стандартном запросе.
         return base + "/api/Project/Manual/" + encodeURIComponent(String(projectId));
     }
-
-    function buildProjectEditUrl(projectId) {
-        if (!projectId) {
-            return null;
-        }
-        const origin = window.location.origin || "";
-        const base = origin.replace(/\/+$/, "");
-        // Страница редактирования проекта, где есть вкладка «Ручная чистка» и форма с токеном.
-        return base + "/lk/Project/Edit/" + encodeURIComponent(String(projectId));
-    }

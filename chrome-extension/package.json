@@ -1,8 +1,4 @@
 {
   "name": "cleaner-ext-content",
-  "private": true,
-  "scripts": {
-    "build": "node build-content.js",
-    "split": "node split-content.js"
-  }
+  "private": true
 }

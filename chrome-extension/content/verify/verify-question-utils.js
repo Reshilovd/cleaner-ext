@@ -91,14 +91,6 @@
         return variableCodes.length > 1 ? variableCodes : [];
     }
 
-    /** Есть ли на странице список переменных через «;» (Q1_1_other; Q1_2_other; …) — тогда вопрос сгруппирован. */
-    function isVerifyQuestionGrouped(questionCode) {
-        const code = String(questionCode || "").trim();
-        if (!code) return false;
-        const variableCodes = getVerifyGroupedVariableCodes(code);
-        return variableCodes.length > 1 && variableCodes.includes(code);
-    }
-
     /** Код вопроса для ключа: если не сгруппирован — целиком (Q1_3_other, Q13.1); при сгруппированном поиск идёт по списку переменных из заголовка. */
     function getVerifyQuestionBaseCode(questionCode) {
         return String(questionCode || "").trim();

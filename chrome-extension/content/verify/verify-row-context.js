@@ -74,24 +74,6 @@
         };
     }
 
-    function buildVerifyRowKey(context) {
-        if (!context) {
-            return null;
-        }
-        const idPart =
-            context.openEndId != null && context.openEndId !== ""
-                ? String(context.openEndId).trim()
-                : "";
-        const valuePart =
-            context.valueText && context.valueText !== ""
-                ? String(context.valueText).trim().toLowerCase()
-                : "";
-        if (!idPart && !valuePart) {
-            return null;
-        }
-        return idPart + "||" + valuePart;
-    }
-
     function getVerifyRespondentIdsLookupCache() {
         if (!(state.verifyRespondentIdsLookupCache instanceof Map)) {
             state.verifyRespondentIdsLookupCache = new Map();
@@ -113,25 +95,6 @@
             .sort();
 
         return [projectKey, openEndId, valueKey, codes.join(";")].join("||");
-    }
-
-    /** Возвращает число N (кол-во ID по ответу) из первой ячейки строки или null. */
-    function getVerifyRowN(gridRoot, row) {
-        if (!gridRoot || !row) return null;
-        const headerRow = gridRoot.querySelector(".k-grid-header thead tr[role='row']");
-        const headerCells = headerRow ? headerRow.querySelectorAll("th[role='columnheader']") : null;
-        const firstHeaderText = headerCells && headerCells.length
-            ? (headerCells[0].textContent || "").trim().toLowerCase()
-            : "";
-        const cells = row.querySelectorAll("td[role='gridcell']");
-        if (!cells.length) return null;
-        const firstCell = cells[0];
-        const text = (firstCell.textContent || "").trim();
-        const num = parseInt(text, 10);
-        if (firstHeaderText === "n" || /^\d+$/.test(text)) {
-            return Number.isFinite(num) ? num : null;
-        }
-        return Number.isFinite(num) ? num : null;
     }
 
     /** Возвращает { incorrect, postpone } по чекбоксам строки. */

@@ -1,24 +1,5 @@
 "use strict";
 
-    function escapeRegExp(value) {
-        return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    }
-
-    function uniqStrings(values) {
-        const seen = new Set();
-        const result = [];
-
-        for (const value of values) {
-            if (!value || seen.has(value)) {
-                continue;
-            }
-            seen.add(value);
-            result.push(value);
-        }
-
-        return result;
-    }
-
     function loadStoredState() {
         try {
             const raw = localStorage.getItem(STORAGE_KEY);

@@ -471,11 +471,6 @@
         return [...new Set(codes)];
     }
 
-    function getRespondentTopReasonCode(respondentId, projectId, verifyIncorrectSet, ratingReasonMap, manualSet) {
-        const codes = getRespondentAllReasonCodes(respondentId, verifyIncorrectSet, ratingReasonMap, manualSet);
-        return getTopReasonCode(codes);
-    }
-
     /** Загружает Excel рейтинга по projectId (URL: /lk/Project/Ratings/{id}), парсит все ReasonCodes. */
     async function ensureRatingIncorrectIdsLoaded(projectId) {
         if (!projectId) return false;
