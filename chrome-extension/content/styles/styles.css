@@ -617,14 +617,58 @@
                 position: absolute;
                 right: 12px;
                 bottom: 10px;
-                color: #2563eb;
+                color: #2097F6;
                 font: 700 16px/1 "Segoe UI", Tahoma, sans-serif;
                 white-space: nowrap;
                 pointer-events: none;
                 user-select: none;
             }
             .qga-project-edit-stats-host--danger .qga-project-edit-stats-percent {
-                color: #b91c1c;
+                color: #2097F6;
+            }
+            .qga-project-edit-stats-breakdown-card {
+                padding: 0 !important;
+                overflow: hidden;
+                background: #fff !important;
+            }
+            .qga-project-edit-stats-breakdown-grid {
+                display: flex;
+                align-items: stretch;
+                min-height: 100%;
+            }
+            .qga-project-edit-stats-breakdown-part {
+                flex: 1 1 50%;
+                min-width: 0;
+                display: flex;
+                flex-direction: column;
+                justify-content: flex-start;
+                align-items: flex-start;
+                gap: 0;
+                padding: 10px 12px;
+                background: #fff;
+            }
+            .qga-project-edit-stats-breakdown-part + .qga-project-edit-stats-breakdown-part {
+                border-left: 1px solid #e5e7eb;
+            }
+            .qga-project-edit-stats-breakdown-label {
+                position: static;
+                left: auto;
+                top: auto;
+                width: auto;
+                height: auto;
+                margin: 0;
+                display: block;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                text-align: left;
+            }
+            .qga-project-edit-stats-breakdown-value {
+                display: block;
+                margin-top: 6px;
+                margin-left: 0;
+                white-space: nowrap;
+                text-align: left;
             }
             .qga-project-edit-penalty-header {
                 min-width: 96px;

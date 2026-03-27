@@ -5,6 +5,10 @@ var PROJECT_EDIT_STATS_ALLOWED_HASHES =
         ? PROJECT_EDIT_STATS_ALLOWED_HASHES
         : new Set(["#options", "#matrix", "#openends", "#multiaccounts", "#manual"]);
 
+var PROJECT_EDIT_STATS_HOST_CLASS =
+    typeof PROJECT_EDIT_STATS_HOST_CLASS !== "undefined"
+        ? PROJECT_EDIT_STATS_HOST_CLASS
+        : "qga-project-edit-stats-host";
 var PROJECT_EDIT_STATS_PERCENT_CLASS =
     typeof PROJECT_EDIT_STATS_PERCENT_CLASS !== "undefined"
         ? PROJECT_EDIT_STATS_PERCENT_CLASS
@@ -13,9 +17,39 @@ var PROJECT_EDIT_STATS_DANGER_CLASS =
     typeof PROJECT_EDIT_STATS_DANGER_CLASS !== "undefined"
         ? PROJECT_EDIT_STATS_DANGER_CLASS
         : "qga-project-edit-stats-host--danger";
+var PROJECT_EDIT_STATS_BREAKDOWN_CARD_CLASS =
+    typeof PROJECT_EDIT_STATS_BREAKDOWN_CARD_CLASS !== "undefined"
+        ? PROJECT_EDIT_STATS_BREAKDOWN_CARD_CLASS
+        : "qga-project-edit-stats-breakdown-card";
+var PROJECT_EDIT_STATS_BREAKDOWN_GRID_CLASS =
+    typeof PROJECT_EDIT_STATS_BREAKDOWN_GRID_CLASS !== "undefined"
+        ? PROJECT_EDIT_STATS_BREAKDOWN_GRID_CLASS
+        : "qga-project-edit-stats-breakdown-grid";
+var PROJECT_EDIT_STATS_BREAKDOWN_PART_CLASS =
+    typeof PROJECT_EDIT_STATS_BREAKDOWN_PART_CLASS !== "undefined"
+        ? PROJECT_EDIT_STATS_BREAKDOWN_PART_CLASS
+        : "qga-project-edit-stats-breakdown-part";
+var PROJECT_EDIT_STATS_BREAKDOWN_LABEL_CLASS =
+    typeof PROJECT_EDIT_STATS_BREAKDOWN_LABEL_CLASS !== "undefined"
+        ? PROJECT_EDIT_STATS_BREAKDOWN_LABEL_CLASS
+        : "qga-project-edit-stats-breakdown-label";
+var PROJECT_EDIT_STATS_BREAKDOWN_VALUE_CLASS =
+    typeof PROJECT_EDIT_STATS_BREAKDOWN_VALUE_CLASS !== "undefined"
+        ? PROJECT_EDIT_STATS_BREAKDOWN_VALUE_CLASS
+        : "qga-project-edit-stats-breakdown-value";
 
 var projectEditStatsSyncTimer =
     typeof projectEditStatsSyncTimer !== "undefined" ? projectEditStatsSyncTimer : null;
+var projectEditStatsRatingRequestedProjects =
+    typeof projectEditStatsRatingRequestedProjects !== "undefined" &&
+    projectEditStatsRatingRequestedProjects instanceof Set
+        ? projectEditStatsRatingRequestedProjects
+        : new Set();
+var projectEditStatsRatingPendingProjects =
+    typeof projectEditStatsRatingPendingProjects !== "undefined" &&
+    projectEditStatsRatingPendingProjects instanceof Set
+        ? projectEditStatsRatingPendingProjects
+        : new Set();
 
 function setupProjectEditStatsWidget() {
     ensureProjectEditStatsObserver();
@@ -53,6 +87,16 @@ function ensureProjectEditStatsObserver() {
     });
 }
 
+function isProjectEditStatsOwnedElement(element) {
+    if (!(element instanceof Element)) {
+        return false;
+    }
+
+    return !!element.closest(
+        `.${PROJECT_EDIT_STATS_PERCENT_CLASS}, .${PROJECT_EDIT_STATS_BREAKDOWN_CARD_CLASS}`
+    );
+}
+
 function isProjectEditStatsMutationRelevant(mutation) {
     if (!mutation) {
         return false;
@@ -65,7 +109,7 @@ function isProjectEditStatsMutationRelevant(mutation) {
                 ? mutation.target.parentElement
                 : null;
 
-    if (targetElement && targetElement.closest(`.${PROJECT_EDIT_STATS_PERCENT_CLASS}`)) {
+    if (targetElement && isProjectEditStatsOwnedElement(targetElement)) {
         return false;
     }
 
@@ -83,7 +127,7 @@ function isProjectEditStatsMutationRelevant(mutation) {
         if (!element) {
             return false;
         }
-        if (element.closest(`.${PROJECT_EDIT_STATS_PERCENT_CLASS}`)) {
+        if (isProjectEditStatsOwnedElement(element)) {
             return false;
         }
         return !!(element.closest("#divStats") || element.querySelector("#divStats"));
@@ -115,7 +159,9 @@ function getProjectEditStatsBinding() {
         return null;
     }
 
-    const cards = Array.from(statsRow.children || []).filter((child) => child instanceof HTMLElement);
+    const cards = Array.from(statsRow.children || []).filter((child) => {
+        return child instanceof HTMLElement && !child.classList.contains(PROJECT_EDIT_STATS_BREAKDOWN_CARD_CLASS);
+    });
     if (cards.length < 3) {
         return null;
     }
@@ -130,6 +176,7 @@ function getProjectEditStatsBinding() {
     }
 
     return {
+        statsRow,
         currentCard,
         totalNode,
         currentNode
@@ -181,7 +228,7 @@ function ensureProjectEditStatsPercentNode(card) {
         return null;
     }
 
-    card.classList.add("qga-project-edit-stats-host");
+    card.classList.add(PROJECT_EDIT_STATS_HOST_CLASS);
 
     let node = getProjectEditStatsPercentNode(card);
     if (!node) {
@@ -194,14 +241,346 @@ function ensureProjectEditStatsPercentNode(card) {
     return node;
 }
 
-function removeProjectEditStatsPercentNode() {
+function getProjectEditStatsBreakdownCard(statsRow) {
+    if (!(statsRow instanceof HTMLElement)) {
+        return null;
+    }
+
+    const node = statsRow.querySelector(`.${PROJECT_EDIT_STATS_BREAKDOWN_CARD_CLASS}`);
+    return node instanceof HTMLElement ? node : null;
+}
+
+function getProjectEditStatsReferenceCardClassName(referenceCard) {
+    if (!(referenceCard instanceof HTMLElement)) {
+        return PROJECT_EDIT_STATS_BREAKDOWN_CARD_CLASS;
+    }
+
+    const classNames = Array.from(referenceCard.classList).filter((className) => {
+        return (
+            className !== PROJECT_EDIT_STATS_HOST_CLASS &&
+            className !== PROJECT_EDIT_STATS_DANGER_CLASS &&
+            className !== PROJECT_EDIT_STATS_BREAKDOWN_CARD_CLASS
+        );
+    });
+    classNames.push(PROJECT_EDIT_STATS_BREAKDOWN_CARD_CLASS);
+
+    return classNames.join(" ").trim();
+}
+
+function buildProjectEditStatsBreakdownPart(metricKey, labelText, titleText) {
+    const part = document.createElement("div");
+    part.className = `${PROJECT_EDIT_STATS_BREAKDOWN_PART_CLASS} ${PROJECT_EDIT_STATS_BREAKDOWN_PART_CLASS}--${metricKey}`;
+    part.setAttribute("data-qga-project-edit-stats-metric", metricKey);
+    part.removeAttribute("title");
+
+    const label = document.createElement("span");
+    label.className = PROJECT_EDIT_STATS_BREAKDOWN_LABEL_CLASS;
+    label.textContent = labelText;
+
+    const value = document.createElement("span");
+    value.className = PROJECT_EDIT_STATS_BREAKDOWN_VALUE_CLASS;
+    value.textContent = "...";
+
+    part.appendChild(label);
+    part.appendChild(value);
+
+    return part;
+}
+
+function getProjectEditStatsStyleReferenceCard(statsRow, fallbackCard) {
+    if (!(statsRow instanceof HTMLElement)) {
+        return fallbackCard instanceof HTMLElement ? fallbackCard : null;
+    }
+
+    const cards = Array.from(statsRow.children || []).filter((child) => {
+        return child instanceof HTMLElement && !child.classList.contains(PROJECT_EDIT_STATS_BREAKDOWN_CARD_CLASS);
+    });
+
+    return (
+        cards.find((card) => card.querySelector(".c_box_header") && card.querySelector(".c_box_content")) ||
+        (fallbackCard instanceof HTMLElement ? fallbackCard : null)
+    );
+}
+
+function syncProjectEditStatsNodeTypography(node, referenceNode, overrides) {
+    if (
+        !(node instanceof HTMLElement) ||
+        !(referenceNode instanceof Element) ||
+        typeof window.getComputedStyle !== "function"
+    ) {
+        return;
+    }
+
+    const referenceStyle = window.getComputedStyle(referenceNode);
+    if (!referenceStyle) {
+        return;
+    }
+
+    node.style.fontFamily = referenceStyle.fontFamily;
+    node.style.fontSize = referenceStyle.fontSize;
+    node.style.fontStyle = referenceStyle.fontStyle;
+    node.style.fontWeight = referenceStyle.fontWeight;
+    node.style.lineHeight = referenceStyle.lineHeight;
+    node.style.letterSpacing = referenceStyle.letterSpacing;
+    node.style.color = referenceStyle.color;
+    node.style.textTransform = referenceStyle.textTransform;
+    node.style.textDecoration = referenceStyle.textDecoration;
+    node.style.textAlign = referenceStyle.textAlign;
+
+    Object.entries(overrides || {}).forEach(([key, value]) => {
+        node.style[key] = value;
+    });
+}
+
+function syncProjectEditStatsBreakdownPartShell(part, labelReferenceCard, percentReferenceCard) {
+    if (!(part instanceof HTMLElement)) {
+        return;
+    }
+
+    const labelNode = part.querySelector(`.${PROJECT_EDIT_STATS_BREAKDOWN_LABEL_CLASS}`);
+    const valueNode = part.querySelector(`.${PROJECT_EDIT_STATS_BREAKDOWN_VALUE_CLASS}`);
+    const labelReferenceNode =
+        labelReferenceCard instanceof HTMLElement ? labelReferenceCard.querySelector(".c_box_header") : null;
+    const valueReferenceNode =
+        percentReferenceCard instanceof HTMLElement
+            ? percentReferenceCard.querySelector(`.${PROJECT_EDIT_STATS_PERCENT_CLASS}`)
+            : null;
+
+    if (labelNode instanceof HTMLElement && labelReferenceNode instanceof Element) {
+        syncProjectEditStatsNodeTypography(labelNode, labelReferenceNode, {
+            position: "static",
+            left: "auto",
+            top: "auto",
+            right: "auto",
+            bottom: "auto",
+            width: "auto",
+            height: "auto",
+            margin: "0",
+            display: "block",
+            textAlign: "left",
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis"
+        });
+    }
+
+    if (valueNode instanceof HTMLElement && valueReferenceNode instanceof Element) {
+        syncProjectEditStatsNodeTypography(valueNode, valueReferenceNode, {
+            position: "static",
+            left: "auto",
+            top: "auto",
+            right: "auto",
+            bottom: "auto",
+            marginTop: "6px",
+            marginRight: "0",
+            marginBottom: "0",
+            marginLeft: "0",
+            display: "block",
+            textAlign: "left",
+            whiteSpace: "nowrap",
+            pointerEvents: "none",
+            userSelect: "none"
+        });
+    }
+}
+
+function syncProjectEditStatsBreakdownCardShell(card, referenceCard) {
+    if (!(card instanceof HTMLElement)) {
+        return;
+    }
+
+    card.className = getProjectEditStatsReferenceCardClassName(referenceCard);
+
+    if (referenceCard instanceof HTMLElement) {
+        const styleText = referenceCard.getAttribute("style");
+        if (styleText) {
+            card.setAttribute("style", styleText);
+        } else {
+            card.removeAttribute("style");
+        }
+    }
+}
+
+function ensureProjectEditStatsBreakdownCard(statsRow, referenceCard) {
+    if (!(statsRow instanceof HTMLElement) || !(referenceCard instanceof HTMLElement)) {
+        return null;
+    }
+
+    let card = getProjectEditStatsBreakdownCard(statsRow);
+    if (!(card instanceof HTMLElement)) {
+        const tagName = String(referenceCard.tagName || "div").toLowerCase();
+        card = document.createElement(tagName);
+    }
+
+    syncProjectEditStatsBreakdownCardShell(card, referenceCard);
+    const styleReferenceCard = getProjectEditStatsStyleReferenceCard(statsRow, referenceCard);
+
+    let grid = card.querySelector(`.${PROJECT_EDIT_STATS_BREAKDOWN_GRID_CLASS}`);
+    if (!(grid instanceof HTMLElement)) {
+        grid = document.createElement("div");
+        grid.className = PROJECT_EDIT_STATS_BREAKDOWN_GRID_CLASS;
+        grid.appendChild(
+            buildProjectEditStatsBreakdownPart("incorrect", "Некорр.", "Некорректные по OpenEnds")
+        );
+        grid.appendChild(
+            buildProjectEditStatsBreakdownPart("speedster", "Спид.", "Спидстеры")
+        );
+        card.textContent = "";
+        card.appendChild(grid);
+    }
+
+    grid.querySelectorAll(`.${PROJECT_EDIT_STATS_BREAKDOWN_PART_CLASS}`).forEach((part) => {
+        syncProjectEditStatsBreakdownPartShell(part, styleReferenceCard, referenceCard);
+    });
+
+    if (card.parentElement !== statsRow || card.previousElementSibling !== referenceCard) {
+        statsRow.insertBefore(card, referenceCard.nextElementSibling || null);
+    }
+
+    return card;
+}
+
+function getProjectEditStatsBreakdownValueNode(card, metricKey) {
+    if (!(card instanceof HTMLElement) || !metricKey) {
+        return null;
+    }
+
+    const metricNode = card.querySelector(`[data-qga-project-edit-stats-metric='${metricKey}']`);
+    if (!(metricNode instanceof HTMLElement)) {
+        return null;
+    }
+
+    const valueNode = metricNode.querySelector(`.${PROJECT_EDIT_STATS_BREAKDOWN_VALUE_CLASS}`);
+    return valueNode instanceof HTMLElement ? valueNode : null;
+}
+
+function setProjectEditStatsBreakdownMetric(card, metricKey, labelText, totalCount, state) {
+    if (!(card instanceof HTMLElement) || !metricKey || !state || typeof state !== "object") {
+        return;
+    }
+
+    const metricNode = card.querySelector(`[data-qga-project-edit-stats-metric='${metricKey}']`);
+    const valueNode = getProjectEditStatsBreakdownValueNode(card, metricKey);
+    if (!(metricNode instanceof HTMLElement) || !(valueNode instanceof HTMLElement)) {
+        return;
+    }
+
+    metricNode.removeAttribute("title");
+
+    if (state.mode === "loading") {
+        valueNode.textContent = "...";
+        return;
+    }
+
+    if (state.mode === "unavailable") {
+        valueNode.textContent = "-";
+        return;
+    }
+
+    const count = Number.isFinite(state.count) ? state.count : 0;
+    valueNode.textContent = formatProjectEditStatsPercent(count, totalCount);
+}
+
+function removeProjectEditStatsUi() {
     document.querySelectorAll(`.${PROJECT_EDIT_STATS_PERCENT_CLASS}`).forEach((node) => node.remove());
-    document.querySelectorAll(".qga-project-edit-stats-host").forEach((node) => {
+    document.querySelectorAll(`.${PROJECT_EDIT_STATS_BREAKDOWN_CARD_CLASS}`).forEach((node) => node.remove());
+    document.querySelectorAll(`.${PROJECT_EDIT_STATS_HOST_CLASS}`).forEach((node) => {
         if (node instanceof HTMLElement) {
-            node.classList.remove("qga-project-edit-stats-host");
+            node.classList.remove(PROJECT_EDIT_STATS_HOST_CLASS);
             node.classList.remove(PROJECT_EDIT_STATS_DANGER_CLASS);
         }
     });
+}
+
+function getProjectEditStatsProjectId() {
+    const verifyProjectId =
+        typeof getProjectIdForVerify === "function" ? String(getProjectIdForVerify() || "").trim() : "";
+    if (verifyProjectId) {
+        return verifyProjectId;
+    }
+
+    return typeof getProjectIdFromEditPage === "function" ? String(getProjectIdFromEditPage() || "").trim() : "";
+}
+
+function hasProjectEditStatsRatingData(projectId) {
+    if (!projectId || !ratingIncorrectIdsState || typeof ratingIncorrectIdsState !== "object") {
+        return false;
+    }
+
+    return Object.prototype.hasOwnProperty.call(ratingIncorrectIdsState, String(projectId));
+}
+
+function ensureProjectEditStatsRatingData(projectId) {
+    const key = String(projectId || "").trim();
+    if (
+        !key ||
+        hasProjectEditStatsRatingData(key) ||
+        projectEditStatsRatingRequestedProjects.has(key) ||
+        typeof ensureRatingIncorrectIdsLoaded !== "function"
+    ) {
+        return;
+    }
+
+    projectEditStatsRatingRequestedProjects.add(key);
+    projectEditStatsRatingPendingProjects.add(key);
+
+    Promise.resolve(ensureRatingIncorrectIdsLoaded(key))
+        .catch(() => false)
+        .finally(() => {
+            projectEditStatsRatingPendingProjects.delete(key);
+            scheduleProjectEditStatsSync(0);
+        });
+}
+
+function getProjectEditStatsBreakdownCounts(projectId) {
+    const incorrectIds = new Set();
+    const speedsterIds = new Set();
+    if (!projectId) {
+        return {
+            incorrectCount: 0,
+            speedsterCount: 0
+        };
+    }
+
+    if (typeof getVerifyIncorrectIdsSetForProject === "function") {
+        const verifyIncorrectSet = getVerifyIncorrectIdsSetForProject(projectId);
+        if (verifyIncorrectSet instanceof Set) {
+            verifyIncorrectSet.forEach((respondentId) => {
+                const normalizedId = String(respondentId || "").trim();
+                if (normalizedId) {
+                    incorrectIds.add(normalizedId);
+                }
+            });
+        }
+    }
+
+    const ratingReasonMap =
+        typeof getRatingReasonCodesForProject === "function" ? getRatingReasonCodesForProject(projectId) : {};
+
+    Object.keys(ratingReasonMap || {}).forEach((respondentId) => {
+        const normalizedId = String(respondentId || "").trim();
+        const reasonCodes = Array.isArray(ratingReasonMap[respondentId])
+            ? ratingReasonMap[respondentId]
+                .map((code) => Number(code))
+                .filter((code) => Number.isFinite(code))
+            : [];
+
+        if (!normalizedId || reasonCodes.length === 0) {
+            return;
+        }
+
+        if (reasonCodes.includes(1)) {
+            incorrectIds.add(normalizedId);
+        }
+        if (reasonCodes.includes(4)) {
+            speedsterIds.add(normalizedId);
+        }
+    });
+
+    return {
+        incorrectCount: incorrectIds.size,
+        speedsterCount: speedsterIds.size
+    };
 }
 
 function getProjectEditStatsPercentValue(count, totalCount) {
@@ -236,13 +615,13 @@ function isProjectEditStatsOverallLabel(labelText) {
 
 function syncProjectEditStatsWidget() {
     if (!isProjectEditStatsHashAllowed()) {
-        removeProjectEditStatsPercentNode();
+        removeProjectEditStatsUi();
         return;
     }
 
     const binding = getProjectEditStatsBinding();
     if (!binding) {
-        removeProjectEditStatsPercentNode();
+        removeProjectEditStatsUi();
         return;
     }
 
@@ -256,6 +635,49 @@ function syncProjectEditStatsWidget() {
     const percentText = formatProjectEditStatsPercent(currentCount, totalCount);
     const percentValue = getProjectEditStatsPercentValue(currentCount, totalCount);
     const currentLabel = getProjectEditStatsCurrentLabel(binding.currentCard);
+    const breakdownCard = ensureProjectEditStatsBreakdownCard(binding.statsRow, binding.currentCard);
+    const projectId = getProjectEditStatsProjectId();
+    const hasRatingData = hasProjectEditStatsRatingData(projectId);
+
+    if (projectId && !hasRatingData) {
+        ensureProjectEditStatsRatingData(projectId);
+    }
+
+    if (breakdownCard instanceof HTMLElement) {
+        if (projectId && !hasRatingData) {
+            const breakdownState = projectEditStatsRatingPendingProjects.has(projectId) ? "loading" : "unavailable";
+            setProjectEditStatsBreakdownMetric(
+                breakdownCard,
+                "incorrect",
+                "Некорректные по OpenEnds",
+                totalCount,
+                { mode: breakdownState }
+            );
+            setProjectEditStatsBreakdownMetric(
+                breakdownCard,
+                "speedster",
+                "Спидстеры",
+                totalCount,
+                { mode: breakdownState }
+            );
+        } else {
+            const breakdownCounts = getProjectEditStatsBreakdownCounts(projectId);
+            setProjectEditStatsBreakdownMetric(
+                breakdownCard,
+                "incorrect",
+                "Некорректные по OpenEnds",
+                totalCount,
+                { mode: "ready", count: breakdownCounts.incorrectCount }
+            );
+            setProjectEditStatsBreakdownMetric(
+                breakdownCard,
+                "speedster",
+                "Спидстеры",
+                totalCount,
+                { mode: "ready", count: breakdownCounts.speedsterCount }
+            );
+        }
+    }
 
     percentNode.textContent = percentText;
     percentNode.title = currentLabel
