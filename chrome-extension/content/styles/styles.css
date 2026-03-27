@@ -659,4 +659,8 @@
                 opacity: 0;
                 pointer-events: none;
             }
+            .qga-project-edit-penalty-switch--busy {
+                opacity: 0.58;
+                cursor: wait;
+            }
         

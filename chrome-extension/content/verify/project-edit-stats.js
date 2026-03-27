@@ -865,8 +865,45 @@ var PROJECT_EDIT_PENALTY_INPUT_CLASS =
     typeof PROJECT_EDIT_PENALTY_INPUT_CLASS !== "undefined"
         ? PROJECT_EDIT_PENALTY_INPUT_CLASS
         : "qga-project-edit-penalty-input";
+var PROJECT_EDIT_PENALTY_UPDATE_URL =
+    typeof PROJECT_EDIT_PENALTY_UPDATE_URL !== "undefined"
+        ? PROJECT_EDIT_PENALTY_UPDATE_URL
+        : "/lk/OpenEnds2/GroupUpdate";
+var PROJECT_EDIT_PENALTY_BRIDGE_SCRIPT =
+    typeof PROJECT_EDIT_PENALTY_BRIDGE_SCRIPT !== "undefined"
+        ? PROJECT_EDIT_PENALTY_BRIDGE_SCRIPT
+        : "content/verify/project-edit-penalty-bridge.js";
+var PROJECT_EDIT_PENALTY_BRIDGE_CHANNEL =
+    typeof PROJECT_EDIT_PENALTY_BRIDGE_CHANNEL !== "undefined"
+        ? PROJECT_EDIT_PENALTY_BRIDGE_CHANNEL
+        : "qga-project-edit-penalty";
+var PROJECT_EDIT_PENALTY_ENTRY_ID =
+    typeof PROJECT_EDIT_PENALTY_ENTRY_ID !== "undefined"
+        ? PROJECT_EDIT_PENALTY_ENTRY_ID
+        : 1;
+var PROJECT_EDIT_PENALTY_ENTRY_VALUE =
+    typeof PROJECT_EDIT_PENALTY_ENTRY_VALUE !== "undefined"
+        ? PROJECT_EDIT_PENALTY_ENTRY_VALUE
+        : "Penalty";
+var projectEditPenaltyPendingRows =
+    typeof projectEditPenaltyPendingRows !== "undefined" && projectEditPenaltyPendingRows instanceof Set
+        ? projectEditPenaltyPendingRows
+        : new Set();
+var projectEditPenaltyBridgeRequestSeq =
+    typeof projectEditPenaltyBridgeRequestSeq !== "undefined"
+        ? projectEditPenaltyBridgeRequestSeq
+        : 0;
+var projectEditPenaltyBridgeRequests =
+    typeof projectEditPenaltyBridgeRequests !== "undefined" && projectEditPenaltyBridgeRequests instanceof Map
+        ? projectEditPenaltyBridgeRequests
+        : new Map();
+var projectEditPenaltyBridgeLoadPromise =
+    typeof projectEditPenaltyBridgeLoadPromise !== "undefined"
+        ? projectEditPenaltyBridgeLoadPromise
+        : null;
 
 function setupProjectEditPenaltyToggle() {
+    ensureProjectEditPenaltyBridgeListener();
     ensureProjectEditPenaltyToggleObserver();
     ensureProjectEditPenaltyEditModeGuard();
     scheduleProjectEditPenaltyToggleSync(0);
@@ -1000,15 +1037,120 @@ function syncProjectEditPenaltyToggle() {
 }
 
 function getProjectEditPenaltyGrid(gridRoot) {
-    if (!(gridRoot instanceof HTMLElement) || typeof window.jQuery !== "function") {
+    if (!(gridRoot instanceof HTMLElement)) {
+        return null;
+    }
+
+    const candidates = [];
+
+    if (typeof window.jQuery === "function") {
+        try {
+            candidates.push(window.jQuery(gridRoot).data("kendoGrid") || null);
+        } catch (error) {
+        }
+    }
+
+    if (window.kendo && typeof window.kendo.widgetInstance === "function") {
+        try {
+            candidates.push(window.kendo.widgetInstance(gridRoot) || null);
+        } catch (error) {
+        }
+
+        if (typeof window.jQuery === "function") {
+            try {
+                candidates.push(window.kendo.widgetInstance(window.jQuery(gridRoot)) || null);
+            } catch (error) {
+            }
+        }
+    }
+
+    try {
+        Object.getOwnPropertyNames(gridRoot).forEach((propertyName) => {
+            try {
+                const value = gridRoot[propertyName];
+                if (isProjectEditPenaltyGridLike(value)) {
+                    candidates.push(value);
+                }
+            } catch (error) {
+            }
+        });
+    } catch (error) {
+    }
+
+    return candidates.find((candidate) => isProjectEditPenaltyGridLike(candidate)) || null;
+}
+
+function isProjectEditPenaltyGridLike(candidate) {
+    return !!(
+        candidate &&
+        typeof candidate === "object" &&
+        typeof candidate.dataItem === "function" &&
+        candidate.dataSource &&
+        typeof candidate.dataSource === "object"
+    );
+}
+
+function getProjectEditPenaltyDataSourceItems(dataSource) {
+    if (!dataSource || typeof dataSource !== "object") {
+        return [];
+    }
+
+    try {
+        if (typeof dataSource.data === "function") {
+            return Array.from(dataSource.data() || []);
+        }
+    } catch (error) {
+    }
+
+    return Array.isArray(dataSource._data) ? dataSource._data.slice() : [];
+}
+
+function getProjectEditPenaltyDataItemByRowUid(grid, rowUid) {
+    if (!grid || !grid.dataSource || !rowUid) {
+        return null;
+    }
+
+    if (typeof grid.dataSource.getByUid === "function") {
+        try {
+            return grid.dataSource.getByUid(rowUid) || null;
+        } catch (error) {
+        }
+    }
+
+    return (
+        getProjectEditPenaltyDataSourceItems(grid.dataSource).find((item) => {
+            return normalizeProjectEditPenaltyText(item && item.uid) === rowUid;
+        }) || null
+    );
+}
+
+function getProjectEditPenaltyDataItem(gridOrGridRoot, row) {
+    const grid =
+        gridOrGridRoot && typeof gridOrGridRoot.dataItem === "function"
+            ? gridOrGridRoot
+            : getProjectEditPenaltyGrid(gridOrGridRoot);
+    if (!grid || !(row instanceof HTMLTableRowElement)) {
         return null;
     }
 
     try {
-        return window.jQuery(gridRoot).data("kendoGrid") || null;
+        const item = grid.dataItem(row);
+        if (item) {
+            return item;
+        }
     } catch (error) {
-        return null;
     }
+
+    const rowUid = normalizeProjectEditPenaltyText(row.getAttribute("data-uid"));
+    return getProjectEditPenaltyDataItemByRowUid(grid, rowUid);
+}
+
+function getProjectEditPenaltyItems(grid) {
+    if (!grid || !grid.dataSource) {
+        return [];
+    }
+
+    return getProjectEditPenaltyDataSourceItems(grid.dataSource);
 }
 
 function ensureProjectEditPenaltyGridHooks(grid) {
@@ -1108,18 +1250,6 @@ function applyProjectEditPenaltyStateToDataItems(grid) {
     });
 }
 
-function getProjectEditPenaltyItems(grid) {
-    if (!grid || !grid.dataSource || typeof grid.dataSource.data !== "function") {
-        return [];
-    }
-
-    try {
-        return Array.from(grid.dataSource.data() || []);
-    } catch (error) {
-        return [];
-    }
-}
-
 function ensureProjectEditPenaltySwitches(grid) {
     if (!grid || !grid.element || !grid.element[0] || typeof window.jQuery !== "function") {
         return;
@@ -1193,15 +1323,22 @@ function getProjectEditPenaltyDataItem(gridOrGridRoot, row) {
         gridOrGridRoot && typeof gridOrGridRoot.dataItem === "function"
             ? gridOrGridRoot
             : getProjectEditPenaltyGrid(gridOrGridRoot);
-    if (!grid || !(row instanceof HTMLTableRowElement) || typeof grid.dataItem !== "function") {
+    if (!grid || !(row instanceof HTMLTableRowElement)) {
         return null;
     }
 
     try {
-        return grid.dataItem(row) || null;
+        if (typeof grid.dataItem === "function") {
+            const item = grid.dataItem(row);
+            if (item) {
+                return item;
+            }
+        }
     } catch (error) {
-        return null;
     }
+
+    const rowUid = normalizeProjectEditPenaltyText(row.getAttribute("data-uid"));
+    return getProjectEditPenaltyDataItemByRowUid(grid, rowUid);
 }
 
 function getProjectEditPenaltyResolvedState(dataItem, rowKey) {
@@ -1221,7 +1358,7 @@ function getProjectEditPenaltyInitialState(rowOrItem) {
         return false;
     }
 
-    const autoCheckData = Array.isArray(dataItem.AutoCheckData) ? dataItem.AutoCheckData : [];
+    const autoCheckData = getProjectEditPenaltyAutoCheckEntries(dataItem);
     const hasPenaltyInArray = autoCheckData.some((entry) => {
         const value =
             entry && typeof entry === "object"
@@ -1431,6 +1568,7 @@ function ensureProjectEditPenaltySwitchWidget(input, checked, gridRoot) {
     }
 
     syncProjectEditPenaltySwitchNode(input, checked);
+    syncProjectEditPenaltySwitchBusyState(input);
 }
 
 function bindProjectEditPenaltySwitchIsolation(node) {
@@ -1453,13 +1591,111 @@ function toggleProjectEditPenaltySwitchInput(input) {
     }
 
     const rowKey = String(input.dataset.qgaPenaltyRowKey || "").trim();
-    if (!rowKey) {
+    const row = input.closest("tr");
+    const gridRoot = input.closest(PROJECT_EDIT_PENALTY_GRID_SELECTOR);
+    const dataItem = getProjectEditPenaltyDataItem(gridRoot, row);
+    if (!rowKey || !(row instanceof HTMLTableRowElement) || isProjectEditPenaltyRowBusy(rowKey)) {
         return;
     }
 
-    const nextChecked = !(projectEditPenaltyToggleState.get(rowKey) === true);
+    const previousChecked =
+        dataItem && typeof dataItem === "object"
+            ? getProjectEditPenaltyResolvedState(dataItem, rowKey)
+            : projectEditPenaltyToggleState.get(rowKey) === true;
+    const previousAutoCheckText = getProjectEditPenaltyAutoCheckCellDisplayText(row);
+    const bridgeRequest = !dataItem ? requestProjectEditPenaltyBridgeToggle(row, !previousChecked) : null;
+
+    if (bridgeRequest) {
+        const nextChecked = !previousChecked;
+
+        projectEditPenaltyToggleState.set(rowKey, nextChecked);
+        syncProjectEditPenaltySwitchNode(input, nextChecked);
+        setProjectEditPenaltyRowBusyState(rowKey, true);
+        syncProjectEditPenaltySwitchBusyState(input);
+
+        bridgeRequest
+            .done((result) => {
+                const resolvedChecked = result && result.checked === true;
+                const resolvedAutoCheckData = Array.isArray(result && result.autoCheckData) ? result.autoCheckData : [];
+                const resolvedAutoCheckString = String(result && result.autoCheckString || "");
+
+                projectEditPenaltyToggleState.set(rowKey, resolvedChecked);
+                syncProjectEditPenaltySwitchNode(input, resolvedChecked);
+                syncProjectEditPenaltyAutoCheckCell(row, resolvedAutoCheckData, resolvedAutoCheckString);
+            })
+            .fail((response) => {
+                projectEditPenaltyToggleState.set(rowKey, previousChecked);
+                syncProjectEditPenaltySwitchNode(input, previousChecked);
+                syncProjectEditPenaltyAutoCheckCell(row, [], previousAutoCheckText);
+
+                if (typeof onFailAjax === "function") {
+                    onFailAjax(response);
+                } else {
+                    console.warn("[QGA] Penalty toggle bridge save failed:", response);
+                }
+            })
+            .always(() => {
+                setProjectEditPenaltyRowBusyState(rowKey, false);
+                syncProjectEditPenaltySwitchBusyState(input);
+            });
+
+        return;
+    }
+
+    if (!dataItem || typeof dataItem !== "object") {
+        console.warn("[QGA] Penalty toggle: dataItem unavailable for row", row);
+        return;
+    }
+
+    const previousAutoCheckData = getProjectEditPenaltyAutoCheckEntries(dataItem);
+    const previousAutoCheckString = getProjectEditPenaltyAutoCheckStringValue(dataItem);
+    const nextChecked = !previousChecked;
+    const nextAutoCheckData = buildProjectEditPenaltyNextAutoCheckData(previousAutoCheckData, nextChecked);
+    const nextAutoCheckString = buildProjectEditPenaltyRequestAutoCheckString(nextAutoCheckData);
+
     projectEditPenaltyToggleState.set(rowKey, nextChecked);
+    applyProjectEditPenaltyDataItemState(dataItem, nextAutoCheckData, nextAutoCheckString, nextChecked);
     syncProjectEditPenaltySwitchNode(input, nextChecked);
+    syncProjectEditPenaltyAutoCheckCell(row, nextAutoCheckData, nextAutoCheckString);
+    setProjectEditPenaltyRowBusyState(rowKey, true);
+    syncProjectEditPenaltySwitchBusyState(input);
+
+    sendProjectEditPenaltyGroupUpdate(dataItem, nextAutoCheckData, nextAutoCheckString)
+        .done((response) => {
+            const responseItem = getProjectEditPenaltyResponseItem(response, dataItem);
+            if (responseItem) {
+                syncProjectEditPenaltyDataItemFromResponse(dataItem, responseItem);
+            } else {
+                applyProjectEditPenaltyDataItemState(dataItem, nextAutoCheckData, nextAutoCheckString, nextChecked);
+            }
+
+            const resolvedAutoCheckData = getProjectEditPenaltyAutoCheckEntries(dataItem);
+            const resolvedChecked = getProjectEditPenaltyInitialState(dataItem);
+            projectEditPenaltyToggleState.set(rowKey, resolvedChecked);
+            syncProjectEditPenaltySwitchNode(input, resolvedChecked);
+            syncProjectEditPenaltyAutoCheckCell(row, resolvedAutoCheckData, getProjectEditPenaltyAutoCheckStringValue(dataItem));
+        })
+        .fail((response) => {
+            projectEditPenaltyToggleState.set(rowKey, previousChecked);
+            applyProjectEditPenaltyDataItemState(
+                dataItem,
+                previousAutoCheckData,
+                previousAutoCheckString,
+                previousChecked
+            );
+            syncProjectEditPenaltySwitchNode(input, previousChecked);
+            syncProjectEditPenaltyAutoCheckCell(row, previousAutoCheckData, previousAutoCheckString);
+
+            if (typeof onFailAjax === "function") {
+                onFailAjax(response);
+            } else {
+                console.warn("[QGA] Penalty toggle save failed:", response);
+            }
+        })
+        .always(() => {
+            setProjectEditPenaltyRowBusyState(rowKey, false);
+            syncProjectEditPenaltySwitchBusyState(input);
+        });
 }
 
 function syncProjectEditPenaltySwitchNode(input, checked) {
@@ -1478,4 +1714,1080 @@ function syncProjectEditPenaltySwitchNode(input, checked) {
     switchNode.setAttribute("aria-checked", String(isChecked));
     switchNode.classList.toggle("k-switch-on", isChecked);
     switchNode.classList.toggle("k-switch-off", !isChecked);
+}
+
+function isProjectEditPenaltyRowBusy(rowKey) {
+    return rowKey ? projectEditPenaltyPendingRows.has(rowKey) : false;
+}
+
+function setProjectEditPenaltyRowBusyState(rowKey, isBusy) {
+    if (!rowKey) {
+        return;
+    }
+
+    if (isBusy) {
+        projectEditPenaltyPendingRows.add(rowKey);
+        return;
+    }
+
+    projectEditPenaltyPendingRows.delete(rowKey);
+}
+
+function syncProjectEditPenaltySwitchBusyState(input) {
+    if (!(input instanceof HTMLInputElement)) {
+        return;
+    }
+
+    const rowKey = String(input.dataset.qgaPenaltyRowKey || "").trim();
+    const switchNode = input.closest(`.${PROJECT_EDIT_PENALTY_SWITCH_CLASS}`);
+    const isBusy = isProjectEditPenaltyRowBusy(rowKey);
+
+    input.disabled = isBusy;
+    if (!(switchNode instanceof HTMLElement)) {
+        return;
+    }
+
+    switchNode.classList.toggle("qga-project-edit-penalty-switch--busy", isBusy);
+    switchNode.setAttribute("aria-disabled", String(isBusy));
+}
+
+function getProjectEditPenaltyAutoCheckCellDisplayText(row) {
+    if (!(row instanceof HTMLTableRowElement)) {
+        return "";
+    }
+
+    const gridRoot = row.closest(PROJECT_EDIT_PENALTY_GRID_SELECTOR);
+    const autoCheckIndex = getProjectEditPenaltyFieldIndex(gridRoot, "AutoCheckData");
+    if (autoCheckIndex < 0) {
+        return "";
+    }
+
+    const cell = row.cells[autoCheckIndex];
+    return cell instanceof HTMLTableCellElement ? String(cell.textContent || "").trim() : "";
+}
+
+function ensureProjectEditPenaltyBridgeListener() {
+    if (window.__qgaProjectEditPenaltyBridgeListenerBound === true) {
+        return;
+    }
+
+    window.__qgaProjectEditPenaltyBridgeListenerBound = true;
+    window.addEventListener("message", handleProjectEditPenaltyBridgeMessage);
+}
+
+function handleProjectEditPenaltyBridgeMessage(event) {
+    if (event.source !== window) {
+        return;
+    }
+
+    const message = event.data;
+    if (!message || message.source !== PROJECT_EDIT_PENALTY_BRIDGE_CHANNEL || message.direction !== "response") {
+        return;
+    }
+
+    const requestId = String(message.requestId || "").trim();
+    const pendingRequest = requestId ? projectEditPenaltyBridgeRequests.get(requestId) : null;
+    if (!pendingRequest) {
+        return;
+    }
+
+    projectEditPenaltyBridgeRequests.delete(requestId);
+    clearTimeout(pendingRequest.timeoutId);
+
+    if (message.success === true) {
+        pendingRequest.resolve(message.payload || {});
+        return;
+    }
+
+    pendingRequest.reject(message.error || new Error("Penalty bridge request failed"));
+}
+
+function ensureProjectEditPenaltyPageBridge() {
+    if (projectEditPenaltyBridgeLoadPromise) {
+        return projectEditPenaltyBridgeLoadPromise;
+    }
+
+    if (
+        !(document.documentElement instanceof HTMLElement) ||
+        typeof chrome === "undefined" ||
+        !chrome.runtime ||
+        typeof chrome.runtime.sendMessage !== "function"
+    ) {
+        projectEditPenaltyBridgeLoadPromise = Promise.reject(new Error("Penalty bridge injection is unavailable"));
+        return projectEditPenaltyBridgeLoadPromise;
+    }
+
+    projectEditPenaltyBridgeLoadPromise = new Promise((resolve, reject) => {
+        chrome.runtime.sendMessage(
+            {
+                target: "qga",
+                type: "inject_project_edit_penalty_bridge"
+            },
+            (response) => {
+                if (chrome.runtime.lastError) {
+                    reject(new Error(chrome.runtime.lastError.message || "Penalty bridge injection failed"));
+                    return;
+                }
+
+                if (response && response.ok) {
+                    resolve();
+                    return;
+                }
+
+                reject(new Error(response && response.error ? response.error : "Penalty bridge injection failed"));
+            }
+        );
+    }).catch((error) => {
+        projectEditPenaltyBridgeLoadPromise = null;
+        throw error instanceof Error ? error : new Error(String(error));
+    });
+
+    return projectEditPenaltyBridgeLoadPromise;
+}
+
+function getProjectEditPenaltyPageBridgeSource() {
+    return `;(${projectEditPenaltyPageBridgeBootstrap.toString()})();`;
+}
+
+function projectEditPenaltyPageBridgeBootstrap() {
+    if (window.__qgaProjectEditPenaltyPageBridgeInstalled === true) {
+        return;
+    }
+
+    window.__qgaProjectEditPenaltyPageBridgeInstalled = true;
+
+    const CHANNEL = "qga-project-edit-penalty";
+    const GRID_SELECTOR = "#gridOpenEnds";
+    const UPDATE_URL = "/lk/OpenEnds2/GroupUpdate";
+    const PENALTY_ENTRY_ID = 1;
+    const PENALTY_ENTRY_VALUE = "Penalty";
+
+    window.addEventListener("message", (event) => {
+        if (event.source !== window) {
+            return;
+        }
+
+        const message = event.data;
+        if (!message || message.source !== CHANNEL || message.direction !== "request") {
+            return;
+        }
+
+        if (message.action === "toggle") {
+            handleToggleRequest(message);
+        }
+    });
+
+    async function handleToggleRequest(message) {
+        const requestId = String(message && message.requestId || "").trim();
+        const payload = message && message.payload && typeof message.payload === "object" ? message.payload : {};
+        const rowUid = String(payload.rowUid || "").trim();
+        const checked = payload.checked === true;
+
+        try {
+            if (!rowUid) {
+                throw new Error("Penalty bridge rowUid is missing");
+            }
+
+            const gridRoot = document.querySelector(GRID_SELECTOR);
+            const grid = getGrid(gridRoot);
+            if (!grid) {
+                throw new Error("Penalty bridge grid is unavailable");
+            }
+
+            const dataItem = getDataItemByRowUid(grid, rowUid);
+            if (!dataItem) {
+                throw new Error(`Penalty bridge dataItem is unavailable for rowUid ${rowUid}`);
+            }
+
+            const previousAutoCheckData = getAutoCheckEntries(dataItem);
+            const previousAutoCheckString = getAutoCheckStringValue(dataItem);
+            const previousChecked = getInitialState(dataItem);
+            const nextAutoCheckData = buildNextAutoCheckData(previousAutoCheckData, checked);
+            const nextAutoCheckString = buildRequestAutoCheckString(nextAutoCheckData);
+
+            applyDataItemState(dataItem, nextAutoCheckData, nextAutoCheckString, checked);
+
+            try {
+                const response = await sendGroupUpdate(dataItem, nextAutoCheckData, nextAutoCheckString);
+                const responseItem = getResponseItem(response, dataItem);
+                if (responseItem) {
+                    syncDataItemFromResponse(dataItem, responseItem);
+                } else {
+                    applyDataItemState(dataItem, nextAutoCheckData, nextAutoCheckString, checked);
+                }
+
+                const resolvedAutoCheckData = getAutoCheckEntries(dataItem);
+                const resolvedAutoCheckString = getAutoCheckStringValue(dataItem);
+                const resolvedChecked = getInitialState(dataItem);
+
+                postResponse(requestId, true, {
+                    checked: resolvedChecked,
+                    autoCheckData: resolvedAutoCheckData,
+                    autoCheckString: resolvedAutoCheckString
+                });
+            } catch (error) {
+                applyDataItemState(dataItem, previousAutoCheckData, previousAutoCheckString, previousChecked);
+                throw error;
+            }
+        } catch (error) {
+            postResponse(requestId, false, null, serializeError(error));
+        }
+    }
+
+    function postResponse(requestId, success, payload, error) {
+        window.postMessage(
+            {
+                source: CHANNEL,
+                direction: "response",
+                requestId: requestId || "",
+                success: success === true,
+                payload: payload || null,
+                error: error || null
+            },
+            "*"
+        );
+    }
+
+    function serializeError(error) {
+        if (!error) {
+            return "Unknown penalty bridge error";
+        }
+
+        if (typeof error === "string") {
+            return error;
+        }
+
+        if (typeof error.message === "string" && error.message) {
+            return error.message;
+        }
+
+        return String(error);
+    }
+
+    function getGrid(gridRoot) {
+        if (!(gridRoot instanceof HTMLElement)) {
+            return null;
+        }
+
+        if (typeof window.jQuery === "function") {
+            try {
+                const grid = window.jQuery(gridRoot).data("kendoGrid");
+                if (isGridLike(grid)) {
+                    return grid;
+                }
+            } catch (error) {
+            }
+        }
+
+        if (window.kendo && typeof window.kendo.widgetInstance === "function") {
+            try {
+                const grid = window.kendo.widgetInstance(gridRoot);
+                if (isGridLike(grid)) {
+                    return grid;
+                }
+            } catch (error) {
+            }
+        }
+
+        return null;
+    }
+
+    function isGridLike(candidate) {
+        return !!(
+            candidate &&
+            typeof candidate === "object" &&
+            typeof candidate.dataItem === "function" &&
+            candidate.dataSource &&
+            typeof candidate.dataSource === "object"
+        );
+    }
+
+    function getDataItemByRowUid(grid, rowUid) {
+        if (!grid || !grid.dataSource || !rowUid) {
+            return null;
+        }
+
+        if (typeof grid.dataSource.getByUid === "function") {
+            try {
+                const item = grid.dataSource.getByUid(rowUid);
+                if (item) {
+                    return item;
+                }
+            } catch (error) {
+            }
+        }
+
+        return getDataSourceItems(grid.dataSource).find((item) => {
+            return String(item && item.uid || "").trim() === rowUid;
+        }) || null;
+    }
+
+    function getDataSourceItems(dataSource) {
+        if (!dataSource || typeof dataSource !== "object") {
+            return [];
+        }
+
+        try {
+            if (typeof dataSource.data === "function") {
+                return Array.from(dataSource.data() || []);
+            }
+        } catch (error) {
+        }
+
+        return Array.isArray(dataSource._data) ? dataSource._data.slice() : [];
+    }
+
+    function normalizeText(value) {
+        return String(value == null ? "" : value)
+            .replace(/\s+/g, " ")
+            .trim()
+            .toLowerCase();
+    }
+
+    function getInitialState(dataItem) {
+        if (!dataItem || typeof dataItem !== "object") {
+            return false;
+        }
+
+        const autoCheckData = getAutoCheckEntries(dataItem);
+        if (autoCheckData.some((entry) => isPenaltyAutoCheckEntry(entry))) {
+            return true;
+        }
+
+        return normalizeText(dataItem.AutoCheckString).includes("penalty");
+    }
+
+    function getAutoCheckEntries(dataItem) {
+        const rawEntries =
+            dataItem && typeof dataItem === "object"
+                ? Array.isArray(dataItem.AutoCheckData)
+                    ? dataItem.AutoCheckData
+                    : dataItem.AutoCheckData && typeof dataItem.AutoCheckData.toJSON === "function"
+                        ? dataItem.AutoCheckData.toJSON()
+                        : []
+                : [];
+
+        const normalizedEntries = rawEntries
+            .map((entry) => normalizeAutoCheckEntry(entry))
+            .filter((entry) => entry && entry.Value);
+
+        if (normalizedEntries.length > 0) {
+            return normalizedEntries;
+        }
+
+        return parseAutoCheckStringEntries(getAutoCheckStringValue(dataItem));
+    }
+
+    function getAutoCheckStringValue(dataItem) {
+        return String(dataItem && dataItem.AutoCheckString != null ? dataItem.AutoCheckString : "").trim();
+    }
+
+    function normalizeAutoCheckEntry(entry) {
+        if (!entry) {
+            return null;
+        }
+
+        const numericId = Number(entry.Id != null ? entry.Id : entry.id);
+        const value = String(entry.Value != null ? entry.Value : entry.value != null ? entry.value : "").trim();
+        if (!value) {
+            return null;
+        }
+
+        return {
+            Id: Number.isFinite(numericId) ? numericId : 0,
+            Value: value
+        };
+    }
+
+    function parseAutoCheckStringEntries(value) {
+        return String(value || "")
+            .split(/[;,]/)
+            .map((entryValue) => buildAutoCheckEntryFromValue(entryValue))
+            .filter((entry) => entry && entry.Value);
+    }
+
+    function buildAutoCheckEntryFromValue(value) {
+        const trimmedValue = String(value || "").trim();
+        if (!trimmedValue) {
+            return null;
+        }
+
+        const normalizedValue = normalizeText(trimmedValue);
+        if (normalizedValue === normalizeText(PENALTY_ENTRY_VALUE)) {
+            return {
+                Id: PENALTY_ENTRY_ID,
+                Value: PENALTY_ENTRY_VALUE
+            };
+        }
+
+        if (normalizedValue === "brand") {
+            return {
+                Id: 2,
+                Value: "Brand"
+            };
+        }
+
+        return {
+            Id: 0,
+            Value: trimmedValue
+        };
+    }
+
+    function isPenaltyAutoCheckEntry(entry) {
+        const normalizedEntry = normalizeAutoCheckEntry(entry);
+        if (!normalizedEntry) {
+            return false;
+        }
+
+        return (
+            normalizedEntry.Id === Number(PENALTY_ENTRY_ID) ||
+            normalizeText(normalizedEntry.Value) === normalizeText(PENALTY_ENTRY_VALUE)
+        );
+    }
+
+    function buildNextAutoCheckData(entries, includePenalty) {
+        const nextEntries = Array.isArray(entries)
+            ? entries
+                .map((entry) => normalizeAutoCheckEntry(entry))
+                .filter((entry) => entry && !isPenaltyAutoCheckEntry(entry))
+            : [];
+
+        if (includePenalty) {
+            nextEntries.push({
+                Id: Number(PENALTY_ENTRY_ID),
+                Value: String(PENALTY_ENTRY_VALUE)
+            });
+        }
+
+        return nextEntries.sort((left, right) => {
+            const leftId = Number.isFinite(left && left.Id) ? left.Id : Number.MAX_SAFE_INTEGER;
+            const rightId = Number.isFinite(right && right.Id) ? right.Id : Number.MAX_SAFE_INTEGER;
+            if (leftId !== rightId) {
+                return leftId - rightId;
+            }
+
+            return String(left && left.Value || "").localeCompare(String(right && right.Value || ""));
+        });
+    }
+
+    function buildRequestAutoCheckString(entries) {
+        if (!Array.isArray(entries) || entries.length !== 1) {
+            return "";
+        }
+
+        return String(entries[0] && entries[0].Value || "").trim();
+    }
+
+    function applyDataItemState(dataItem, autoCheckData, autoCheckString, isChecked) {
+        if (!dataItem || typeof dataItem !== "object") {
+            return;
+        }
+
+        setDataItemField(
+            dataItem,
+            "AutoCheckData",
+            autoCheckData.map((entry) => ({
+                Id: entry.Id,
+                Value: entry.Value
+            }))
+        );
+        setDataItemField(dataItem, "AutoCheckString", autoCheckString);
+        setDataItemField(dataItem, "QgaPenalty", isChecked === true);
+    }
+
+    function setDataItemField(dataItem, fieldName, value) {
+        if (!dataItem || typeof dataItem !== "object" || !fieldName) {
+            return;
+        }
+
+        if (typeof dataItem.set === "function") {
+            try {
+                dataItem.set(fieldName, value);
+                return;
+            } catch (error) {
+            }
+        }
+
+        dataItem[fieldName] = value;
+    }
+
+    async function sendGroupUpdate(dataItem, autoCheckData, autoCheckString) {
+        const payload = buildGroupUpdatePayload(dataItem, autoCheckData, autoCheckString);
+        const response = await fetch(UPDATE_URL, {
+            method: "POST",
+            credentials: "include",
+            headers: {
+                "Accept": "application/json, text/plain, */*",
+                "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+                "X-Requested-With": "XMLHttpRequest"
+            },
+            body: payload
+        });
+
+        const responseText = await response.text();
+        const responseData = parseResponseText(responseText);
+        if (!response.ok) {
+            throw responseData || new Error(`Penalty bridge request failed with status ${response.status}`);
+        }
+
+        return responseData;
+    }
+
+    function parseResponseText(responseText) {
+        const text = String(responseText || "").trim();
+        if (!text) {
+            return null;
+        }
+
+        try {
+            return JSON.parse(text);
+        } catch (error) {
+            return text;
+        }
+    }
+
+    function buildGroupUpdatePayload(dataItem, autoCheckData, autoCheckString) {
+        const params = new URLSearchParams();
+        const normalizedAutoCheckData = Array.isArray(autoCheckData) ? autoCheckData : [];
+        const shouldSendAutoCheckData = normalizedAutoCheckData.length > 1;
+
+        params.set("sort", "");
+        params.set("group", "");
+        params.set("filter", "");
+        params.set("Id", stringifyPayloadValue(dataItem && dataItem.Id));
+        params.set("Name", stringifyPayloadValue(dataItem && dataItem.Name));
+        params.set("Label", stringifyPayloadValue(dataItem && dataItem.Label));
+        params.set("Vars", stringifyPayloadValue(dataItem && dataItem.Vars));
+        params.set("NotVerifiedCount", stringifyPayloadValue(dataItem && dataItem.NotVerifiedCount));
+        params.set("NotVerifiedInterviewCount", stringifyPayloadValue(dataItem && dataItem.NotVerifiedInterviewCount));
+        params.set("Order", stringifyPayloadValue(dataItem && dataItem.Order));
+        params.set("IsCheck", stringifyBoolean(dataItem && dataItem.IsCheck));
+        params.set("AutoCheckString", stringifyPayloadValue(autoCheckString));
+        params.set("IsMultiCheck", stringifyBoolean(dataItem && dataItem.IsMultiCheck));
+        params.set("BrandTagsString", stringifyPayloadValue(dataItem && dataItem.BrandTagsString));
+
+        if (shouldSendAutoCheckData) {
+            normalizedAutoCheckData.forEach((entry, index) => {
+                params.set(`AutoCheckData[${index}].Id`, stringifyPayloadValue(entry && entry.Id));
+                params.set(`AutoCheckData[${index}].Value`, stringifyPayloadValue(entry && entry.Value));
+            });
+        }
+
+        getBrandTags(dataItem).forEach((entry, index) => {
+            params.set(`BrandTags[${index}].id`, stringifyPayloadValue(entry && entry.id));
+            params.set(`BrandTags[${index}].description`, stringifyPayloadValue(entry && entry.description));
+        });
+
+        return params.toString();
+    }
+
+    function getBrandTags(dataItem) {
+        const rawTags =
+            dataItem && typeof dataItem === "object"
+                ? Array.isArray(dataItem.BrandTags)
+                    ? dataItem.BrandTags
+                    : dataItem.BrandTags && typeof dataItem.BrandTags.toJSON === "function"
+                        ? dataItem.BrandTags.toJSON()
+                        : []
+                : [];
+
+        return rawTags
+            .map((entry) => {
+                const id = entry && (entry.id != null ? entry.id : entry.Id);
+                const description = entry && (entry.description != null ? entry.description : entry.Description);
+
+                return {
+                    id: id == null ? "" : id,
+                    description: description == null ? "" : description
+                };
+            })
+            .filter((entry) => entry.id !== "" || entry.description !== "");
+    }
+
+    function stringifyPayloadValue(value) {
+        return value == null ? "" : String(value);
+    }
+
+    function stringifyBoolean(value) {
+        return value === true || String(value).toLowerCase() === "true" ? "true" : "false";
+    }
+
+    function getResponseItem(response, dataItem) {
+        const rows = response && Array.isArray(response.Data) ? response.Data : [];
+        if (!rows.length) {
+            return null;
+        }
+
+        const targetId = stringifyPayloadValue(dataItem && dataItem.Id);
+        return rows.find((row) => stringifyPayloadValue(row && row.Id) === targetId) || rows[0] || null;
+    }
+
+    function syncDataItemFromResponse(dataItem, responseItem) {
+        if (!dataItem || typeof dataItem !== "object" || !responseItem || typeof responseItem !== "object") {
+            return;
+        }
+
+        [
+            "Id",
+            "Name",
+            "Label",
+            "Vars",
+            "NotVerifiedCount",
+            "NotVerifiedInterviewCount",
+            "Order",
+            "IsCheck",
+            "IsMultiCheck"
+        ].forEach((fieldName) => {
+            if (Object.prototype.hasOwnProperty.call(responseItem, fieldName)) {
+                setDataItemField(dataItem, fieldName, responseItem[fieldName]);
+            }
+        });
+
+        setDataItemField(dataItem, "QgaPenalty", getInitialState(dataItem));
+    }
+}
+
+function requestProjectEditPenaltyBridgeToggle(row, checked) {
+    const rowUid = getProjectEditPenaltyBridgeRowUid(row);
+    if (!rowUid) {
+        return null;
+    }
+
+    return createProjectEditPenaltyAsyncRequest(
+        ensureProjectEditPenaltyPageBridge().then(() => {
+            return new Promise((resolve, reject) => {
+                const requestId = `qga-penalty-${Date.now()}-${++projectEditPenaltyBridgeRequestSeq}`;
+                const timeoutId = setTimeout(() => {
+                    projectEditPenaltyBridgeRequests.delete(requestId);
+                    reject(new Error("Penalty bridge request timed out"));
+                }, 15000);
+
+                projectEditPenaltyBridgeRequests.set(requestId, {
+                    resolve,
+                    reject,
+                    timeoutId
+                });
+
+                window.postMessage(
+                    {
+                        source: PROJECT_EDIT_PENALTY_BRIDGE_CHANNEL,
+                        direction: "request",
+                        action: "toggle",
+                        requestId,
+                        payload: {
+                            rowUid,
+                            checked: checked === true
+                        }
+                    },
+                    "*"
+                );
+            });
+        })
+    );
+}
+
+function getProjectEditPenaltyBridgeRowUid(row) {
+    return row instanceof HTMLTableRowElement ? String(row.getAttribute("data-uid") || "").trim() : "";
+}
+
+function getProjectEditPenaltyAutoCheckEntries(dataItem) {
+    const rawEntries =
+        dataItem && typeof dataItem === "object"
+            ? Array.isArray(dataItem.AutoCheckData)
+                ? dataItem.AutoCheckData
+                : dataItem.AutoCheckData && typeof dataItem.AutoCheckData.toJSON === "function"
+                    ? dataItem.AutoCheckData.toJSON()
+                    : []
+            : [];
+
+    const normalizedEntries = rawEntries
+        .map((entry) => normalizeProjectEditPenaltyAutoCheckEntry(entry))
+        .filter((entry) => entry && entry.Value);
+
+    if (normalizedEntries.length > 0) {
+        return normalizedEntries;
+    }
+
+    return parseProjectEditPenaltyAutoCheckStringEntries(getProjectEditPenaltyAutoCheckStringValue(dataItem));
+}
+
+function normalizeProjectEditPenaltyAutoCheckEntry(entry) {
+    if (!entry) {
+        return null;
+    }
+
+    const numericId = Number(entry.Id != null ? entry.Id : entry.id);
+    const value = String(entry.Value != null ? entry.Value : entry.value != null ? entry.value : "").trim();
+    if (!value) {
+        return null;
+    }
+
+    return {
+        Id: Number.isFinite(numericId) ? numericId : 0,
+        Value: value
+    };
+}
+
+function parseProjectEditPenaltyAutoCheckStringEntries(value) {
+    return String(value || "")
+        .split(/[;,]/)
+        .map((entryValue) => buildProjectEditPenaltyAutoCheckEntryFromValue(entryValue))
+        .filter((entry) => entry && entry.Value);
+}
+
+function buildProjectEditPenaltyAutoCheckEntryFromValue(value) {
+    const trimmedValue = String(value || "").trim();
+    if (!trimmedValue) {
+        return null;
+    }
+
+    const normalizedValue = normalizeProjectEditPenaltyText(trimmedValue);
+    if (normalizedValue === normalizeProjectEditPenaltyText(PROJECT_EDIT_PENALTY_ENTRY_VALUE)) {
+        return {
+            Id: Number(PROJECT_EDIT_PENALTY_ENTRY_ID),
+            Value: String(PROJECT_EDIT_PENALTY_ENTRY_VALUE)
+        };
+    }
+
+    if (normalizedValue === "brand") {
+        return {
+            Id: 2,
+            Value: "Brand"
+        };
+    }
+
+    return {
+        Id: 0,
+        Value: trimmedValue
+    };
+}
+
+function isProjectEditPenaltyAutoCheckEntry(entry) {
+    const normalizedEntry = normalizeProjectEditPenaltyAutoCheckEntry(entry);
+    if (!normalizedEntry) {
+        return false;
+    }
+
+    return (
+        normalizedEntry.Id === Number(PROJECT_EDIT_PENALTY_ENTRY_ID) ||
+        normalizeProjectEditPenaltyText(normalizedEntry.Value) === normalizeProjectEditPenaltyText(PROJECT_EDIT_PENALTY_ENTRY_VALUE)
+    );
+}
+
+function buildProjectEditPenaltyNextAutoCheckData(entries, includePenalty) {
+    const nextEntries = Array.isArray(entries)
+        ? entries
+            .map((entry) => normalizeProjectEditPenaltyAutoCheckEntry(entry))
+            .filter((entry) => entry && !isProjectEditPenaltyAutoCheckEntry(entry))
+        : [];
+
+    if (includePenalty) {
+        nextEntries.push({
+            Id: Number(PROJECT_EDIT_PENALTY_ENTRY_ID),
+            Value: String(PROJECT_EDIT_PENALTY_ENTRY_VALUE)
+        });
+    }
+
+    return nextEntries.sort((left, right) => {
+        const leftId = Number.isFinite(left && left.Id) ? left.Id : Number.MAX_SAFE_INTEGER;
+        const rightId = Number.isFinite(right && right.Id) ? right.Id : Number.MAX_SAFE_INTEGER;
+        if (leftId !== rightId) {
+            return leftId - rightId;
+        }
+
+        return String(left && left.Value || "").localeCompare(String(right && right.Value || ""));
+    });
+}
+
+function buildProjectEditPenaltyRequestAutoCheckString(entries) {
+    if (!Array.isArray(entries) || entries.length !== 1) {
+        return "";
+    }
+
+    return String(entries[0] && entries[0].Value || "").trim();
+}
+
+function buildProjectEditPenaltyDisplayAutoCheckString(entries, fallbackValue) {
+    if (Array.isArray(entries) && entries.length > 0) {
+        return entries
+            .map((entry) => String(entry && entry.Value || "").trim())
+            .filter(Boolean)
+            .join(", ");
+    }
+
+    return String(fallbackValue || "").trim();
+}
+
+function getProjectEditPenaltyAutoCheckStringValue(dataItem) {
+    return String(dataItem && dataItem.AutoCheckString != null ? dataItem.AutoCheckString : "").trim();
+}
+
+function applyProjectEditPenaltyDataItemState(dataItem, autoCheckData, autoCheckString, isChecked) {
+    if (!dataItem || typeof dataItem !== "object") {
+        return;
+    }
+
+    setProjectEditPenaltyDataItemField(
+        dataItem,
+        "AutoCheckData",
+        autoCheckData.map((entry) => ({
+            Id: entry.Id,
+            Value: entry.Value
+        }))
+    );
+    setProjectEditPenaltyDataItemField(dataItem, "AutoCheckString", autoCheckString);
+    setProjectEditPenaltyDataItemField(dataItem, PROJECT_EDIT_PENALTY_FIELD, isChecked === true);
+}
+
+function setProjectEditPenaltyDataItemField(dataItem, fieldName, value) {
+    if (!dataItem || typeof dataItem !== "object" || !fieldName) {
+        return;
+    }
+
+    if (typeof dataItem.set === "function") {
+        try {
+            dataItem.set(fieldName, value);
+            return;
+        } catch (error) {
+        }
+    }
+
+    dataItem[fieldName] = value;
+}
+
+function sendProjectEditPenaltyGroupUpdate(dataItem, autoCheckData, autoCheckString) {
+    const payload = buildProjectEditPenaltyGroupUpdatePayload(dataItem, autoCheckData, autoCheckString);
+
+    if (typeof fetch === "function") {
+        return createProjectEditPenaltyAsyncRequest(
+            fetch(PROJECT_EDIT_PENALTY_UPDATE_URL, {
+                method: "POST",
+                credentials: "include",
+                headers: {
+                    "Accept": "application/json, text/plain, */*",
+                    "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+                    "X-Requested-With": "XMLHttpRequest"
+                },
+                body: payload
+            }).then(async (response) => {
+                const responseText = await response.text();
+                const responseData = parseProjectEditPenaltyResponseText(responseText);
+
+                if (!response.ok) {
+                    throw responseData || new Error(`Penalty toggle request failed with status ${response.status}`);
+                }
+
+                return responseData;
+            })
+        );
+    }
+
+    if (typeof window.jQuery !== "function" || !window.jQuery.ajax) {
+        return createProjectEditPenaltyAsyncRequest(Promise.reject(new Error("Penalty toggle transport is unavailable")));
+    }
+
+    return window.jQuery.ajax({
+        url: PROJECT_EDIT_PENALTY_UPDATE_URL,
+        type: "POST",
+        data: payload,
+        contentType: "application/x-www-form-urlencoded; charset=UTF-8",
+        processData: false,
+        headers: {
+            "X-Requested-With": "XMLHttpRequest"
+        }
+    });
+}
+
+function createProjectEditPenaltyAsyncRequest(promise) {
+    let doneCallback = null;
+    let failCallback = null;
+    let alwaysCallback = null;
+
+    Promise.resolve(promise)
+        .then((result) => {
+            if (typeof doneCallback === "function") {
+                doneCallback(result);
+            }
+        })
+        .catch((error) => {
+            if (typeof failCallback === "function") {
+                failCallback(error);
+            }
+        })
+        .finally(() => {
+            if (typeof alwaysCallback === "function") {
+                alwaysCallback();
+            }
+        });
+
+    return {
+        done(callback) {
+            doneCallback = callback;
+            return this;
+        },
+        fail(callback) {
+            failCallback = callback;
+            return this;
+        },
+        always(callback) {
+            alwaysCallback = callback;
+            return this;
+        }
+    };
+}
+
+function parseProjectEditPenaltyResponseText(responseText) {
+    const text = String(responseText || "").trim();
+    if (!text) {
+        return null;
+    }
+
+    try {
+        return JSON.parse(text);
+    } catch (error) {
+        return text;
+    }
+}
+
+function buildProjectEditPenaltyGroupUpdatePayload(dataItem, autoCheckData, autoCheckString) {
+    const params = new URLSearchParams();
+    const normalizedAutoCheckData = Array.isArray(autoCheckData) ? autoCheckData : [];
+    const shouldSendAutoCheckData = normalizedAutoCheckData.length > 1;
+
+    params.set("sort", "");
+    params.set("group", "");
+    params.set("filter", "");
+    params.set("Id", stringifyProjectEditPenaltyPayloadValue(dataItem && dataItem.Id));
+    params.set("Name", stringifyProjectEditPenaltyPayloadValue(dataItem && dataItem.Name));
+    params.set("Label", stringifyProjectEditPenaltyPayloadValue(dataItem && dataItem.Label));
+    params.set("Vars", stringifyProjectEditPenaltyPayloadValue(dataItem && dataItem.Vars));
+    params.set("NotVerifiedCount", stringifyProjectEditPenaltyPayloadValue(dataItem && dataItem.NotVerifiedCount));
+    params.set(
+        "NotVerifiedInterviewCount",
+        stringifyProjectEditPenaltyPayloadValue(dataItem && dataItem.NotVerifiedInterviewCount)
+    );
+    params.set("Order", stringifyProjectEditPenaltyPayloadValue(dataItem && dataItem.Order));
+    params.set("IsCheck", stringifyProjectEditPenaltyBoolean(dataItem && dataItem.IsCheck));
+    params.set("AutoCheckString", stringifyProjectEditPenaltyPayloadValue(autoCheckString));
+    params.set("IsMultiCheck", stringifyProjectEditPenaltyBoolean(dataItem && dataItem.IsMultiCheck));
+    params.set("BrandTagsString", stringifyProjectEditPenaltyPayloadValue(dataItem && dataItem.BrandTagsString));
+
+    if (shouldSendAutoCheckData) {
+        normalizedAutoCheckData.forEach((entry, index) => {
+            params.set(`AutoCheckData[${index}].Id`, stringifyProjectEditPenaltyPayloadValue(entry && entry.Id));
+            params.set(`AutoCheckData[${index}].Value`, stringifyProjectEditPenaltyPayloadValue(entry && entry.Value));
+        });
+    }
+
+    getProjectEditPenaltyBrandTags(dataItem).forEach((entry, index) => {
+        params.set(`BrandTags[${index}].id`, stringifyProjectEditPenaltyPayloadValue(entry && entry.id));
+        params.set(`BrandTags[${index}].description`, stringifyProjectEditPenaltyPayloadValue(entry && entry.description));
+    });
+
+    return params.toString();
+}
+
+function getProjectEditPenaltyBrandTags(dataItem) {
+    const rawTags =
+        dataItem && typeof dataItem === "object"
+            ? Array.isArray(dataItem.BrandTags)
+                ? dataItem.BrandTags
+                : dataItem.BrandTags && typeof dataItem.BrandTags.toJSON === "function"
+                    ? dataItem.BrandTags.toJSON()
+                    : []
+            : [];
+
+    return rawTags
+        .map((entry) => {
+            const id = entry && (entry.id != null ? entry.id : entry.Id);
+            const description = entry && (entry.description != null ? entry.description : entry.Description);
+
+            return {
+                id: id == null ? "" : id,
+                description: description == null ? "" : description
+            };
+        })
+        .filter((entry) => entry.id !== "" || entry.description !== "");
+}
+
+function stringifyProjectEditPenaltyPayloadValue(value) {
+    return value == null ? "" : String(value);
+}
+
+function stringifyProjectEditPenaltyBoolean(value) {
+    return value === true || String(value).toLowerCase() === "true" ? "true" : "false";
+}
+
+function getProjectEditPenaltyResponseItem(response, dataItem) {
+    const rows = response && Array.isArray(response.Data) ? response.Data : [];
+    if (!rows.length) {
+        return null;
+    }
+
+    const targetId = stringifyProjectEditPenaltyPayloadValue(dataItem && dataItem.Id);
+    return rows.find((row) => stringifyProjectEditPenaltyPayloadValue(row && row.Id) === targetId) || rows[0] || null;
+}
+
+function syncProjectEditPenaltyDataItemFromResponse(dataItem, responseItem) {
+    if (!dataItem || typeof dataItem !== "object" || !responseItem || typeof responseItem !== "object") {
+        return;
+    }
+
+    [
+        "Id",
+        "Name",
+        "Label",
+        "Vars",
+        "NotVerifiedCount",
+        "NotVerifiedInterviewCount",
+        "Order",
+        "IsCheck",
+        "IsMultiCheck"
+    ].forEach((fieldName) => {
+        if (Object.prototype.hasOwnProperty.call(responseItem, fieldName)) {
+            setProjectEditPenaltyDataItemField(dataItem, fieldName, responseItem[fieldName]);
+        }
+    });
+
+    setProjectEditPenaltyDataItemField(
+        dataItem,
+        PROJECT_EDIT_PENALTY_FIELD,
+        getProjectEditPenaltyInitialState(dataItem)
+    );
+}
+
+function syncProjectEditPenaltyAutoCheckCell(row, autoCheckData, autoCheckString) {
+    if (!(row instanceof HTMLTableRowElement)) {
+        return;
+    }
+
+    const gridRoot = row.closest(PROJECT_EDIT_PENALTY_GRID_SELECTOR);
+    const autoCheckIndex = getProjectEditPenaltyFieldIndex(gridRoot, "AutoCheckData");
+    if (autoCheckIndex < 0) {
+        return;
+    }
+
+    const cell = row.cells[autoCheckIndex];
+    if (!(cell instanceof HTMLTableCellElement)) {
+        return;
+    }
+
+    const displayValue = buildProjectEditPenaltyDisplayAutoCheckString(autoCheckData, autoCheckString);
+    const textHolder = cell.querySelector("span");
+    if (textHolder instanceof HTMLElement) {
+        textHolder.textContent = displayValue;
+        return;
+    }
+
+    cell.textContent = displayValue;
+}
+
+function getProjectEditPenaltyFieldIndex(gridRoot, fieldName) {
+    const headerRow = getProjectEditPenaltyHeaderRow(gridRoot);
+    if (!(headerRow instanceof HTMLTableRowElement) || !fieldName) {
+        return -1;
+    }
+
+    const header = headerRow.querySelector(`th[role='columnheader'][data-field='${fieldName}']`);
+    return header instanceof HTMLTableCellElement && Number.isFinite(header.cellIndex) ? header.cellIndex : -1;
 }

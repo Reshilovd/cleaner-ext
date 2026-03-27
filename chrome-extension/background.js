@@ -34,6 +34,40 @@ function ensureQgaXlsxLibraryLoaded() {
     return false;
 }
 
+function injectProjectEditPenaltyBridgeInTab(tabId) {
+    return new Promise((resolve, reject) => {
+        if (!tabId) {
+            reject(new Error("tab id is unavailable"));
+            return;
+        }
+
+        if (!chrome.scripting || typeof chrome.scripting.executeScript !== "function") {
+            reject(new Error("chrome.scripting.executeScript is unavailable"));
+            return;
+        }
+
+        try {
+            chrome.scripting.executeScript(
+                {
+                    target: { tabId, allFrames: false },
+                    files: ["content/verify/project-edit-penalty-bridge.js"],
+                    world: "MAIN"
+                },
+                () => {
+                    if (chrome.runtime.lastError) {
+                        reject(new Error(chrome.runtime.lastError.message || "Failed to inject penalty bridge"));
+                        return;
+                    }
+
+                    resolve(true);
+                }
+            );
+        } catch (error) {
+            reject(error);
+        }
+    });
+}
+
 function buildVerifyQuestionValueKey(questionCode, valueText) {
     const q = String(questionCode || "").trim();
     const v = String(valueText || "")
@@ -319,6 +353,23 @@ async function restoreQgaArrayBufferFromDataUrl(dataUrl) {
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (!message || message.target !== "qga") {
         return;
+    }
+
+    if (message.type === "inject_project_edit_penalty_bridge") {
+        Promise.resolve()
+            .then(async () => {
+                const tabId = _sender && _sender.tab && _sender.tab.id ? _sender.tab.id : null;
+                await injectProjectEditPenaltyBridgeInTab(tabId);
+                sendResponse({ ok: true });
+            })
+            .catch((error) => {
+                sendResponse({
+                    ok: false,
+                    error: String(error && error.message ? error.message : error)
+                });
+            });
+
+        return true;
     }
 
     if (message.type === "parse_xlsx") {
