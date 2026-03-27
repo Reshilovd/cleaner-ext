@@ -1335,7 +1335,8 @@ function ensureProjectEditPenaltyCell(gridRoot, row, referenceIndex) {
         cell.className = PROJECT_EDIT_PENALTY_CELL_CLASS;
         cell.setAttribute("role", "gridcell");
         cell.setAttribute("data-field", PROJECT_EDIT_PENALTY_FIELD);
-        cell.style.padding = "0";
+        cell.style.verticalAlign = "top";
+        cell.style.textAlign = "center";
 
         const wrap = document.createElement("div");
         wrap.className = PROJECT_EDIT_PENALTY_CELL_WRAP_CLASS;

@@ -635,18 +635,19 @@
                 width: 96px;
                 min-width: 96px;
                 text-align: center;
-                vertical-align: middle;
+                vertical-align: top;
             }
             .qga-project-edit-penalty-cell-wrap {
-                display: flex;
-                align-items: center;
-                justify-content: center;
+                display: block;
                 width: 100%;
-                min-height: 44px;
+                text-align: center;
+                white-space: nowrap;
             }
             .qga-project-edit-penalty-cell-wrap .k-switch,
             .qga-project-edit-penalty-switch {
-                margin: 0 auto;
+                display: inline-flex;
+                vertical-align: middle;
+                margin: 0;
             }
             .qga-project-edit-penalty-input {
                 position: absolute;
