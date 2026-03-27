@@ -595,6 +595,11 @@ function syncProjectEditPenaltyToggle() {
     }
 
     const gridRoot = getProjectEditPenaltyGridRoot();
+    if (hasProjectEditPenaltyActiveEditRow(gridRoot)) {
+        removeProjectEditPenaltyColumn();
+        return;
+    }
+
     const headerRow = getProjectEditPenaltyHeaderRow(gridRoot);
     const referenceHeader = findProjectEditPenaltyReferenceHeader(headerRow);
     const referenceIndex = getProjectEditPenaltyReferenceIndex(headerRow, referenceHeader);
@@ -612,6 +617,14 @@ function syncProjectEditPenaltyToggle() {
 
     const rows = gridRoot.querySelectorAll(".k-grid-content tbody tr.k-master-row");
     rows.forEach((row) => ensureProjectEditPenaltyCell(gridRoot, row, referenceIndex));
+}
+
+function hasProjectEditPenaltyActiveEditRow(gridRoot) {
+    if (!(gridRoot instanceof HTMLElement)) {
+        return false;
+    }
+
+    return !!gridRoot.querySelector(".k-grid-content tbody tr.k-grid-edit-row");
 }
 
 function ensureProjectEditPenaltyCell(gridRoot, row, referenceIndex) {
@@ -855,6 +868,7 @@ var PROJECT_EDIT_PENALTY_INPUT_CLASS =
 
 function setupProjectEditPenaltyToggle() {
     ensureProjectEditPenaltyToggleObserver();
+    ensureProjectEditPenaltyEditModeGuard();
     scheduleProjectEditPenaltyToggleSync(0);
 }
 
@@ -886,6 +900,35 @@ function ensureProjectEditPenaltyToggleObserver() {
     window.addEventListener("hashchange", () => {
         scheduleProjectEditPenaltyToggleSync(0);
     });
+}
+
+function ensureProjectEditPenaltyEditModeGuard() {
+    if (!document.body || document.body.dataset.qgaProjectEditPenaltyEditGuardBound === "1") {
+        return;
+    }
+
+    document.body.dataset.qgaProjectEditPenaltyEditGuardBound = "1";
+
+    const maybeRemovePenaltyBeforeInlineEdit = (event) => {
+        if (!isProjectEditPenaltyHashAllowed()) {
+            return;
+        }
+
+        const target = event.target instanceof Element ? event.target : null;
+        if (!(target instanceof Element)) {
+            return;
+        }
+
+        const editTrigger = target.closest(`${PROJECT_EDIT_PENALTY_GRID_SELECTOR} a.k-grid-edit, ${PROJECT_EDIT_PENALTY_GRID_SELECTOR} .k-grid-edit`);
+        if (!(editTrigger instanceof Element)) {
+            return;
+        }
+
+        removeProjectEditPenaltyColumn();
+    };
+
+    document.addEventListener("pointerdown", maybeRemovePenaltyBeforeInlineEdit, true);
+    document.addEventListener("click", maybeRemovePenaltyBeforeInlineEdit, true);
 }
 
 function isProjectEditPenaltyMutationRelevant(mutation) {
@@ -1239,6 +1282,11 @@ function syncProjectEditPenaltyToggle() {
     }
 
     const gridRoot = getProjectEditPenaltyGridRoot();
+    if (hasProjectEditPenaltyActiveEditRow(gridRoot)) {
+        removeProjectEditPenaltyColumn();
+        return;
+    }
+
     const headerRow = getProjectEditPenaltyHeaderRow(gridRoot);
     const referenceHeader = findProjectEditPenaltyReferenceHeader(headerRow);
     const referenceIndex = getProjectEditPenaltyReferenceIndex(headerRow, referenceHeader);
@@ -1258,13 +1306,20 @@ function syncProjectEditPenaltyToggle() {
     rows.forEach((row) => ensureProjectEditPenaltyCell(gridRoot, row, referenceIndex));
 }
 
+function hasProjectEditPenaltyActiveEditRow(gridRoot) {
+    if (!(gridRoot instanceof HTMLElement)) {
+        return false;
+    }
+
+    return !!gridRoot.querySelector(".k-grid-content tbody tr.k-grid-edit-row");
+}
+
 function ensureProjectEditPenaltyCell(gridRoot, row, referenceIndex) {
     if (!(gridRoot instanceof HTMLElement) || !(row instanceof HTMLTableRowElement) || referenceIndex < 0) {
         return;
     }
 
-    const cells = getProjectEditPenaltyDataCells(row);
-    const referenceCell = cells[referenceIndex];
+    const referenceCell = row.cells[referenceIndex];
     if (!(referenceCell instanceof HTMLTableCellElement)) {
         return;
     }
@@ -1309,10 +1364,39 @@ function ensureProjectEditPenaltyCell(gridRoot, row, referenceIndex) {
 }
 
 function createProjectEditPenaltySwitch() {
+    const wrapper = document.createElement("span");
+    wrapper.className = `k-switch k-widget ${PROJECT_EDIT_PENALTY_SWITCH_CLASS} k-switch-off`;
+    wrapper.setAttribute("role", "switch");
+    wrapper.setAttribute("tabindex", "0");
+    wrapper.setAttribute("aria-checked", "false");
+
     const input = document.createElement("input");
     input.type = "checkbox";
     input.className = PROJECT_EDIT_PENALTY_INPUT_CLASS;
-    return input;
+    input.setAttribute("data-role", "switch");
+
+    const container = document.createElement("span");
+    container.className = "k-switch-container";
+
+    const labelOn = document.createElement("span");
+    labelOn.className = "k-switch-label-on";
+    labelOn.textContent = "On";
+
+    const labelOff = document.createElement("span");
+    labelOff.className = "k-switch-label-off";
+    labelOff.textContent = "Off";
+
+    const handle = document.createElement("span");
+    handle.className = "k-switch-handle";
+
+    container.appendChild(labelOn);
+    container.appendChild(labelOff);
+    container.appendChild(handle);
+
+    wrapper.appendChild(input);
+    wrapper.appendChild(container);
+
+    return wrapper;
 }
 
 function ensureProjectEditPenaltySwitchWidget(input, checked, gridRoot) {
@@ -1320,58 +1404,32 @@ function ensureProjectEditPenaltySwitchWidget(input, checked, gridRoot) {
         return;
     }
 
-    bindProjectEditPenaltySwitchIsolation(input);
-
-    if (typeof window.jQuery === "function") {
-        const $input = window.jQuery(input);
-        let switchWidget = $input.data("kendoSwitch");
-
-        if (!switchWidget && typeof $input.kendoSwitch === "function") {
-            $input.kendoSwitch();
-            switchWidget = $input.data("kendoSwitch");
-        }
-
-        if (switchWidget && input.dataset.qgaPenaltyBound !== "1") {
-            input.dataset.qgaPenaltyBound = "1";
-            switchWidget.bind("change", function (event) {
-                const element =
-                    this.element && this.element[0] instanceof HTMLInputElement
-                        ? this.element[0]
-                        : input;
-                const rowKey = String(element.dataset.qgaPenaltyRowKey || "").trim();
-                if (!rowKey) {
-                    return;
-                }
-
-                projectEditPenaltyToggleState.set(rowKey, event && event.checked === true);
-            });
-        }
-
-        if (switchWidget && typeof switchWidget.wrapper !== "undefined" && switchWidget.wrapper && switchWidget.wrapper[0]) {
-            bindProjectEditPenaltySwitchIsolation(switchWidget.wrapper[0]);
-        }
-
-        if (switchWidget && typeof switchWidget.check === "function") {
-            if (switchWidget.check() !== checked) {
-                switchWidget.check(checked);
-            }
-            return;
-        }
+    const switchNode = input.closest(`.${PROJECT_EDIT_PENALTY_SWITCH_CLASS}`);
+    if (!(switchNode instanceof HTMLElement)) {
+        return;
     }
 
-    if (input.dataset.qgaPenaltyFallbackBound !== "1") {
-        input.dataset.qgaPenaltyFallbackBound = "1";
-        input.addEventListener("change", () => {
-            const rowKey = String(input.dataset.qgaPenaltyRowKey || "").trim();
-            if (!rowKey) {
+    bindProjectEditPenaltySwitchIsolation(switchNode);
+
+    if (switchNode.dataset.qgaPenaltyBound !== "1") {
+        switchNode.dataset.qgaPenaltyBound = "1";
+
+        switchNode.addEventListener("click", (event) => {
+            event.preventDefault();
+            toggleProjectEditPenaltySwitchInput(input);
+        });
+
+        switchNode.addEventListener("keydown", (event) => {
+            if (event.key !== " " && event.key !== "Enter") {
                 return;
             }
 
-            projectEditPenaltyToggleState.set(rowKey, input.checked === true);
+            event.preventDefault();
+            toggleProjectEditPenaltySwitchInput(input);
         });
     }
 
-    input.checked = checked;
+    syncProjectEditPenaltySwitchNode(input, checked);
 }
 
 function bindProjectEditPenaltySwitchIsolation(node) {
@@ -1386,4 +1444,37 @@ function bindProjectEditPenaltySwitchIsolation(node) {
             event.stopPropagation();
         });
     });
+}
+
+function toggleProjectEditPenaltySwitchInput(input) {
+    if (!(input instanceof HTMLInputElement)) {
+        return;
+    }
+
+    const rowKey = String(input.dataset.qgaPenaltyRowKey || "").trim();
+    if (!rowKey) {
+        return;
+    }
+
+    const nextChecked = !(projectEditPenaltyToggleState.get(rowKey) === true);
+    projectEditPenaltyToggleState.set(rowKey, nextChecked);
+    syncProjectEditPenaltySwitchNode(input, nextChecked);
+}
+
+function syncProjectEditPenaltySwitchNode(input, checked) {
+    if (!(input instanceof HTMLInputElement)) {
+        return;
+    }
+
+    const switchNode = input.closest(`.${PROJECT_EDIT_PENALTY_SWITCH_CLASS}`);
+    if (!(switchNode instanceof HTMLElement)) {
+        input.checked = checked === true;
+        return;
+    }
+
+    const isChecked = checked === true;
+    input.checked = isChecked;
+    switchNode.setAttribute("aria-checked", String(isChecked));
+    switchNode.classList.toggle("k-switch-on", isChecked);
+    switchNode.classList.toggle("k-switch-off", !isChecked);
 }
