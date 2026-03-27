@@ -1,18 +1,21 @@
 # Verify
 
-Логика страницы VerifyMain и связанных сценариев проверки OpenEnds.
+Логика VerifyMain и связанных сценариев проверки OpenEnds. В этой папке лежит не только код страницы `/lk/openends2/verifymain`, но и часть feature для `Project/Edit`.
 
 Что здесь лежит:
 
-- `verify-question-utils.js` — работа с кодами вопросов и группами переменных.
-- `verify-manual-storage.js` — localStorage/API-состояние ручной чистки и локальные incorrect-ID.
-- `verify-rating.js` — загрузка и разбор рейтинга, reason codes.
+- `verify-question-utils.js` — работа с кодами вопросов, grouped variables и вариантами кодов.
+- `verify-manual-storage.js` — localStorage/API-состояние ручной чистки, токен, сохранённые группы OpenEnds и локальные incorrect ID.
+- `verify-rating.js` — парсеры XLSX, transport для background parse и reason codes из рейтинга.
 - `verify-modal.js` — modal UI с ответами респондента и выбором в ручную чистку.
-- `verify-row-context.js` — извлечение контекста строки и поиск respondent IDs.
-- `verify-index.js` — загрузка XLSX-индекса респондентов.
-- `verify-row-decorate.js` — подсветка строк, иконки, кнопка `Посмотреть`, bulk-декорация грида.
+- `verify-row-context.js` — извлечение контекста строки и lookup respondent IDs.
+- `verify-index.js` — загрузка и кэширование XLSX-индекса респондентов.
+- `verify-row-decorate.js` — подсветка строк, иконки reason codes, колонка «Другие ответы», обновление видимости.
+- `project-edit-stats.js` — виджет статистики на `Project/Edit` и penalty-toggle на вкладке `#openends`.
+- `project-edit-penalty-bridge.js` — bridge-скрипт, который инжектится в `MAIN world` для работы с page-side Kendo state и `GroupUpdate`.
 
 Важно:
 
 - Модули из этой папки сильно завязаны на общий `state` и должны грузиться после `base` и `common`.
-- Bootstrap VerifyMain вынесен в `base/verify-bootstrap.js`, а не лежит здесь.
+- Bootstrap VerifyMain находится в `base/verify-bootstrap.js`, а не здесь.
+- Разбор XLSX по возможности уходит в background service worker через сообщения; fallback на main thread остаётся только запасным вариантом.

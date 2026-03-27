@@ -1,16 +1,21 @@
 # Content Scripts
 
-Этот каталог содержит content-скрипты расширения, разложенные по зонам ответственности.
+Каталог `content/` содержит content scripts расширения, разложенные по зонам ответственности.
 
-Порядок загрузки задаётся в [manifest.json](/c:/Users/denis.reshilov/Projects/cleaner-ext/cleaner-ext/chrome-extension/manifest.json) и для части модулей критичен: сначала грузятся базовые глобалы и bootstrap, затем feature-модули, в конце общий init.
+Порядок загрузки задаётся в `chrome-extension/manifest.json` и для части модулей критичен: сначала грузятся глобалы и базовый bootstrap, затем общие утилиты, затем feature-модули, и только в конце общий `init`.
 
 Структура:
 
-- `base` — общие глобалы, page bootstrap, runtime/init-логика.
-- `common` — мелкие общие утилиты без привязки к конкретной feature.
-- `cleaner-projects` — фильтры и избранное на списке проектов Cleaner.
-- `pyrus` — сценарий переноса данных из Pyrus в Cleaner.
-- `storage` — работа с сохранением настроек расширения.
-- `styles` — инъекция CSS для UI расширения.
-- `verify` — VerifyMain: индекс респондентов, рейтинг, модалки, ручная чистка.
-- `openends` — панель группировки OpenEnds, сканирование и bulk-операции.
+- `base` — глобальное состояние, определение типа страницы, bootstrap VerifyMain, shortcut из OpenEnds и общий вход.
+- `common` — мелкие общие DOM-, text- и timing-утилиты без привязки к конкретной feature.
+- `cleaner-projects` — фильтр по авторам, избранное и related UI для списка проектов Cleaner.
+- `pyrus` — извлечение payload из Pyrus, transport между страницами и autofill-flow в Cleaner.
+- `storage` — сохранение настроек панели OpenEnds.
+- `styles` — CSS для UI расширения.
+- `verify` — VerifyMain и часть логики страницы `Project/Edit`: respondent lookup, rating/manual state, модалки, project-edit stats и penalty-toggle.
+- `openends` — панель группировки OpenEnds, сканирование грида и bulk-операции.
+
+Важно:
+
+- Это только content-слой. Часть тяжёлой логики, например фоновый разбор XLSX и инъекция bridge-скрипта, вынесена в `chrome-extension/background.js`.
+- Модули из `verify/`, `openends/`, `pyrus/` и `cleaner-projects/` опираются на общий `state` из `base/globals.js`.
