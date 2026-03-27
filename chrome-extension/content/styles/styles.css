@@ -650,6 +650,14 @@
             .qga-project-edit-stats-breakdown-part + .qga-project-edit-stats-breakdown-part {
                 border-left: 1px solid #e5e7eb;
             }
+            .qga-project-edit-stats-breakdown-part--danger {
+                background: #fee2e2 !important;
+                box-shadow: inset 0 0 0 1px #fca5a5;
+            }
+            .qga-project-edit-stats-breakdown-part--danger .qga-project-edit-stats-breakdown-label,
+            .qga-project-edit-stats-breakdown-part--danger .qga-project-edit-stats-breakdown-value {
+                color: #b91c1c !important;
+            }
             .qga-project-edit-stats-breakdown-label {
                 position: static;
                 left: auto;

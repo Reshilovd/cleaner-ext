@@ -37,6 +37,14 @@ var PROJECT_EDIT_STATS_BREAKDOWN_VALUE_CLASS =
     typeof PROJECT_EDIT_STATS_BREAKDOWN_VALUE_CLASS !== "undefined"
         ? PROJECT_EDIT_STATS_BREAKDOWN_VALUE_CLASS
         : "qga-project-edit-stats-breakdown-value";
+var PROJECT_EDIT_STATS_BREAKDOWN_DANGER_CLASS =
+    typeof PROJECT_EDIT_STATS_BREAKDOWN_DANGER_CLASS !== "undefined"
+        ? PROJECT_EDIT_STATS_BREAKDOWN_DANGER_CLASS
+        : "qga-project-edit-stats-breakdown-part--danger";
+var PROJECT_EDIT_STATS_ALERT_THRESHOLD =
+    typeof PROJECT_EDIT_STATS_ALERT_THRESHOLD !== "undefined"
+        ? PROJECT_EDIT_STATS_ALERT_THRESHOLD
+        : 4;
 
 var projectEditStatsSyncTimer =
     typeof projectEditStatsSyncTimer !== "undefined" ? projectEditStatsSyncTimer : null;
@@ -420,10 +428,10 @@ function ensureProjectEditStatsBreakdownCard(statsRow, referenceCard) {
         grid = document.createElement("div");
         grid.className = PROJECT_EDIT_STATS_BREAKDOWN_GRID_CLASS;
         grid.appendChild(
-            buildProjectEditStatsBreakdownPart("incorrect", "Некорр.", "Некорректные по OpenEnds")
+            buildProjectEditStatsBreakdownPart("incorrect", "OpenEnds.", "Некорректные по OpenEnds")
         );
         grid.appendChild(
-            buildProjectEditStatsBreakdownPart("speedster", "Спид.", "Спидстеры")
+            buildProjectEditStatsBreakdownPart("speedster", "Спидстеры", "Спидстеры")
         );
         card.textContent = "";
         card.appendChild(grid);
@@ -445,7 +453,7 @@ function getProjectEditStatsBreakdownValueNode(card, metricKey) {
         return null;
     }
 
-    const metricNode = card.querySelector(`[data-qga-project-edit-stats-metric='${metricKey}']`);
+    const metricNode = getProjectEditStatsBreakdownMetricNode(card, metricKey);
     if (!(metricNode instanceof HTMLElement)) {
         return null;
     }
@@ -454,18 +462,28 @@ function getProjectEditStatsBreakdownValueNode(card, metricKey) {
     return valueNode instanceof HTMLElement ? valueNode : null;
 }
 
+function getProjectEditStatsBreakdownMetricNode(card, metricKey) {
+    if (!(card instanceof HTMLElement) || !metricKey) {
+        return null;
+    }
+
+    const metricNode = card.querySelector(`[data-qga-project-edit-stats-metric='${metricKey}']`);
+    return metricNode instanceof HTMLElement ? metricNode : null;
+}
+
 function setProjectEditStatsBreakdownMetric(card, metricKey, labelText, totalCount, state) {
     if (!(card instanceof HTMLElement) || !metricKey || !state || typeof state !== "object") {
         return;
     }
 
-    const metricNode = card.querySelector(`[data-qga-project-edit-stats-metric='${metricKey}']`);
+    const metricNode = getProjectEditStatsBreakdownMetricNode(card, metricKey);
     const valueNode = getProjectEditStatsBreakdownValueNode(card, metricKey);
     if (!(metricNode instanceof HTMLElement) || !(valueNode instanceof HTMLElement)) {
         return;
     }
 
     metricNode.removeAttribute("title");
+    metricNode.classList.remove(PROJECT_EDIT_STATS_BREAKDOWN_DANGER_CLASS);
 
     if (state.mode === "loading") {
         valueNode.textContent = "...";
@@ -478,7 +496,9 @@ function setProjectEditStatsBreakdownMetric(card, metricKey, labelText, totalCou
     }
 
     const count = Number.isFinite(state.count) ? state.count : 0;
+    const percentValue = getProjectEditStatsPercentValue(count, totalCount);
     valueNode.textContent = formatProjectEditStatsPercent(count, totalCount);
+    metricNode.classList.toggle(PROJECT_EDIT_STATS_BREAKDOWN_DANGER_CLASS, percentValue > PROJECT_EDIT_STATS_ALERT_THRESHOLD);
 }
 
 function removeProjectEditStatsUi() {
@@ -633,11 +653,12 @@ function syncProjectEditStatsWidget() {
     const totalCount = getProjectEditStatsCountFromNode(binding.totalNode);
     const currentCount = getProjectEditStatsCountFromNode(binding.currentNode);
     const percentText = formatProjectEditStatsPercent(currentCount, totalCount);
-    const percentValue = getProjectEditStatsPercentValue(currentCount, totalCount);
     const currentLabel = getProjectEditStatsCurrentLabel(binding.currentCard);
     const breakdownCard = ensureProjectEditStatsBreakdownCard(binding.statsRow, binding.currentCard);
     const projectId = getProjectEditStatsProjectId();
     const hasRatingData = hasProjectEditStatsRatingData(projectId);
+
+    binding.currentCard.classList.remove(PROJECT_EDIT_STATS_DANGER_CLASS);
 
     if (projectId && !hasRatingData) {
         ensureProjectEditStatsRatingData(projectId);
@@ -683,10 +704,6 @@ function syncProjectEditStatsWidget() {
     percentNode.title = currentLabel
         ? `${currentLabel}: ${currentCount} из ${totalCount}`
         : `${currentCount} из ${totalCount}`;
-    binding.currentCard.classList.toggle(
-        PROJECT_EDIT_STATS_DANGER_CLASS,
-        isProjectEditStatsOverallLabel(currentLabel) && percentValue > 5
-    );
 }
 
 var PROJECT_EDIT_PENALTY_ALLOWED_HASH =
