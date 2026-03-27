@@ -643,16 +643,22 @@
                 text-align: center;
                 white-space: nowrap;
             }
-            .qga-project-edit-penalty-cell-wrap .k-switch,
-            .qga-project-edit-penalty-switch {
-                display: inline-flex;
-                vertical-align: middle;
-                margin: 0;
-            }
-            .qga-project-edit-penalty-input {
-                position: absolute;
-                width: 1px;
-                height: 1px;
+.qga-project-edit-penalty-cell-wrap .k-switch,
+.qga-project-edit-penalty-switch {
+    display: inline-flex;
+    vertical-align: middle;
+    margin: 0;
+}
+.qga-project-edit-penalty-switch {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    appearance: none;
+}
+.qga-project-edit-penalty-input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
                 margin: 0;
                 padding: 0;
                 border: 0;

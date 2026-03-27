@@ -59,15 +59,17 @@
             try {
                 const response = await sendGroupUpdate(dataItem, nextAutoCheckData, nextAutoCheckString);
                 const responseItem = getResponseItem(response, dataItem);
+                const hasResponseAutoCheckState = hasAutoCheckStateInResponse(responseItem);
+
                 if (responseItem) {
                     syncDataItemFromResponse(dataItem, responseItem);
-                } else {
-                    applyDataItemState(dataItem, nextAutoCheckData, nextAutoCheckString, checked);
                 }
 
-                const resolvedAutoCheckData = getAutoCheckEntries(dataItem);
-                const resolvedAutoCheckString = getAutoCheckStringValue(dataItem);
-                const resolvedChecked = getInitialState(dataItem);
+                const resolvedAutoCheckData = hasResponseAutoCheckState ? getAutoCheckEntries(dataItem) : nextAutoCheckData;
+                const resolvedAutoCheckString = hasResponseAutoCheckState ? getAutoCheckStringValue(dataItem) : nextAutoCheckString;
+                const resolvedChecked = hasResponseAutoCheckState ? getInitialState(dataItem) : checked;
+
+                applyDataItemState(dataItem, resolvedAutoCheckData, resolvedAutoCheckString, resolvedChecked);
 
                 postResponse(requestId, true, {
                     checked: resolvedChecked,
@@ -349,14 +351,6 @@
             return;
         }
 
-        if (typeof dataItem.set === "function") {
-            try {
-                dataItem.set(fieldName, value);
-                return;
-            } catch (error) {
-            }
-        }
-
         dataItem[fieldName] = value;
     }
 
@@ -445,8 +439,11 @@
         params.set("NotVerifiedInterviewCount", stringifyPayloadValue(dataItem && dataItem.NotVerifiedInterviewCount));
         params.set("Order", stringifyPayloadValue(dataItem && dataItem.Order));
         params.set("IsCheck", stringifyBoolean(dataItem && dataItem.IsCheck));
-        params.set("AutoCheckString", stringifyPayloadValue(autoCheckString));
+        if (autoCheckString != null && String(autoCheckString).trim() !== "") {
+            params.set("AutoCheckString", stringifyPayloadValue(autoCheckString));
+        }
         params.set("IsMultiCheck", stringifyBoolean(dataItem && dataItem.IsMultiCheck));
+        params.set("BrandTags", "");
         params.set("BrandTagsString", stringifyPayloadValue(dataItem && dataItem.BrandTagsString));
 
         if (shouldSendAutoCheckData) {
@@ -505,6 +502,17 @@
         return rows.find((row) => stringifyPayloadValue(row && row.Id) === targetId) || rows[0] || null;
     }
 
+    function hasAutoCheckStateInResponse(responseItem) {
+        return !!(
+            responseItem &&
+            typeof responseItem === "object" &&
+            (
+                Object.prototype.hasOwnProperty.call(responseItem, "AutoCheckData") ||
+                Object.prototype.hasOwnProperty.call(responseItem, "AutoCheckString")
+            )
+        );
+    }
+
     function syncDataItemFromResponse(dataItem, responseItem) {
         if (!dataItem || typeof dataItem !== "object" || !responseItem || typeof responseItem !== "object") {
             return;
@@ -519,7 +527,11 @@
             "NotVerifiedInterviewCount",
             "Order",
             "IsCheck",
-            "IsMultiCheck"
+            "IsMultiCheck",
+            "AutoCheckData",
+            "AutoCheckString",
+            "BrandTags",
+            "BrandTagsString"
         ].forEach((fieldName) => {
             if (Object.prototype.hasOwnProperty.call(responseItem, fieldName)) {
                 setDataItemField(dataItem, fieldName, responseItem[fieldName]);

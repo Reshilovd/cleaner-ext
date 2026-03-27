@@ -1350,10 +1350,16 @@ function getProjectEditPenaltyResolvedState(dataItem, rowKey) {
 }
 
 function getProjectEditPenaltyInitialState(rowOrItem) {
-    const dataItem =
-        rowOrItem instanceof HTMLTableRowElement
-            ? getProjectEditPenaltyDataItem(getProjectEditPenaltyGridRoot(), rowOrItem)
-            : rowOrItem;
+    const row = rowOrItem instanceof HTMLTableRowElement ? rowOrItem : null;
+    const dataItem = row ? getProjectEditPenaltyDataItem(getProjectEditPenaltyGridRoot(), row) : rowOrItem;
+
+    if (row) {
+        const autoCheckCellText = getProjectEditPenaltyAutoCheckCellDisplayText(row);
+        if (autoCheckCellText) {
+            return normalizeProjectEditPenaltyText(autoCheckCellText).includes("penalty");
+        }
+    }
+
     if (!dataItem || typeof dataItem !== "object") {
         return false;
     }
@@ -1487,14 +1493,14 @@ function ensureProjectEditPenaltyCell(gridRoot, row, referenceIndex) {
         row.insertBefore(cell, referenceCell.nextElementSibling || null);
     }
 
-    const switchNode = cell.querySelector(`.${PROJECT_EDIT_PENALTY_INPUT_CLASS}`);
-    if (!(switchNode instanceof HTMLInputElement)) {
+    const switchNode = cell.querySelector(`.${PROJECT_EDIT_PENALTY_SWITCH_CLASS}`);
+    if (!(switchNode instanceof HTMLElement)) {
         return;
     }
 
     switchNode.dataset.qgaPenaltyRowKey = rowKey;
 
-    if (!projectEditPenaltyToggleState.has(rowKey)) {
+    if (!isProjectEditPenaltyRowBusy(rowKey)) {
         projectEditPenaltyToggleState.set(rowKey, getProjectEditPenaltyInitialState(row));
     }
 
@@ -1502,16 +1508,12 @@ function ensureProjectEditPenaltyCell(gridRoot, row, referenceIndex) {
 }
 
 function createProjectEditPenaltySwitch() {
-    const wrapper = document.createElement("span");
+    const wrapper = document.createElement("button");
+    wrapper.type = "button";
     wrapper.className = `k-switch k-widget ${PROJECT_EDIT_PENALTY_SWITCH_CLASS} k-switch-off`;
     wrapper.setAttribute("role", "switch");
     wrapper.setAttribute("tabindex", "0");
     wrapper.setAttribute("aria-checked", "false");
-
-    const input = document.createElement("input");
-    input.type = "checkbox";
-    input.className = PROJECT_EDIT_PENALTY_INPUT_CLASS;
-    input.setAttribute("data-role", "switch");
 
     const container = document.createElement("span");
     container.className = "k-switch-container";
@@ -1531,18 +1533,12 @@ function createProjectEditPenaltySwitch() {
     container.appendChild(labelOff);
     container.appendChild(handle);
 
-    wrapper.appendChild(input);
     wrapper.appendChild(container);
 
     return wrapper;
 }
 
-function ensureProjectEditPenaltySwitchWidget(input, checked, gridRoot) {
-    if (!(input instanceof HTMLInputElement)) {
-        return;
-    }
-
-    const switchNode = input.closest(`.${PROJECT_EDIT_PENALTY_SWITCH_CLASS}`);
+function ensureProjectEditPenaltySwitchWidget(switchNode, checked, gridRoot) {
     if (!(switchNode instanceof HTMLElement)) {
         return;
     }
@@ -1554,7 +1550,7 @@ function ensureProjectEditPenaltySwitchWidget(input, checked, gridRoot) {
 
         switchNode.addEventListener("click", (event) => {
             event.preventDefault();
-            toggleProjectEditPenaltySwitchInput(input);
+            toggleProjectEditPenaltySwitchInput(switchNode);
         });
 
         switchNode.addEventListener("keydown", (event) => {
@@ -1563,12 +1559,12 @@ function ensureProjectEditPenaltySwitchWidget(input, checked, gridRoot) {
             }
 
             event.preventDefault();
-            toggleProjectEditPenaltySwitchInput(input);
+            toggleProjectEditPenaltySwitchInput(switchNode);
         });
     }
 
-    syncProjectEditPenaltySwitchNode(input, checked);
-    syncProjectEditPenaltySwitchBusyState(input);
+    syncProjectEditPenaltySwitchNode(switchNode, checked);
+    syncProjectEditPenaltySwitchBusyState(switchNode);
 }
 
 function bindProjectEditPenaltySwitchIsolation(node) {
@@ -1585,23 +1581,20 @@ function bindProjectEditPenaltySwitchIsolation(node) {
     });
 }
 
-function toggleProjectEditPenaltySwitchInput(input) {
-    if (!(input instanceof HTMLInputElement)) {
+function toggleProjectEditPenaltySwitchInput(switchNode) {
+    if (!(switchNode instanceof HTMLElement)) {
         return;
     }
 
-    const rowKey = String(input.dataset.qgaPenaltyRowKey || "").trim();
-    const row = input.closest("tr");
-    const gridRoot = input.closest(PROJECT_EDIT_PENALTY_GRID_SELECTOR);
+    const rowKey = String(switchNode.dataset.qgaPenaltyRowKey || "").trim();
+    const row = switchNode.closest("tr");
+    const gridRoot = switchNode.closest(PROJECT_EDIT_PENALTY_GRID_SELECTOR);
     const dataItem = getProjectEditPenaltyDataItem(gridRoot, row);
     if (!rowKey || !(row instanceof HTMLTableRowElement) || isProjectEditPenaltyRowBusy(rowKey)) {
         return;
     }
 
-    const previousChecked =
-        dataItem && typeof dataItem === "object"
-            ? getProjectEditPenaltyResolvedState(dataItem, rowKey)
-            : projectEditPenaltyToggleState.get(rowKey) === true;
+    const previousChecked = getProjectEditPenaltySwitchChecked(switchNode);
     const previousAutoCheckText = getProjectEditPenaltyAutoCheckCellDisplayText(row);
     const bridgeRequest = requestProjectEditPenaltyBridgeToggle(row, !previousChecked);
 
@@ -1609,23 +1602,28 @@ function toggleProjectEditPenaltySwitchInput(input) {
         const nextChecked = !previousChecked;
 
         projectEditPenaltyToggleState.set(rowKey, nextChecked);
-        syncProjectEditPenaltySwitchNode(input, nextChecked);
+        syncProjectEditPenaltySwitchNode(switchNode, nextChecked);
         setProjectEditPenaltyRowBusyState(rowKey, true);
-        syncProjectEditPenaltySwitchBusyState(input);
+        syncProjectEditPenaltySwitchBusyState(switchNode);
 
         bridgeRequest
             .done((result) => {
-                const resolvedChecked = result && result.checked === true;
-                const resolvedAutoCheckData = Array.isArray(result && result.autoCheckData) ? result.autoCheckData : [];
-                const resolvedAutoCheckString = String(result && result.autoCheckString || "");
+                const resolvedChecked = result && typeof result.checked === "boolean" ? result.checked === true : nextChecked;
+                const resolvedAutoCheckData = Array.isArray(result && result.autoCheckData)
+                    ? result.autoCheckData
+                    : nextAutoCheckData;
+                const resolvedAutoCheckString =
+                    result && typeof result.autoCheckString === "string"
+                        ? result.autoCheckString
+                        : nextAutoCheckString;
 
                 projectEditPenaltyToggleState.set(rowKey, resolvedChecked);
-                syncProjectEditPenaltySwitchNode(input, resolvedChecked);
+                syncProjectEditPenaltySwitchNode(switchNode, resolvedChecked);
                 syncProjectEditPenaltyAutoCheckCell(row, resolvedAutoCheckData, resolvedAutoCheckString);
             })
             .fail((response) => {
                 projectEditPenaltyToggleState.set(rowKey, previousChecked);
-                syncProjectEditPenaltySwitchNode(input, previousChecked);
+                syncProjectEditPenaltySwitchNode(switchNode, previousChecked);
                 syncProjectEditPenaltyAutoCheckCell(row, [], previousAutoCheckText);
 
                 if (typeof onFailAjax === "function") {
@@ -1636,7 +1634,7 @@ function toggleProjectEditPenaltySwitchInput(input) {
             })
             .always(() => {
                 setProjectEditPenaltyRowBusyState(rowKey, false);
-                syncProjectEditPenaltySwitchBusyState(input);
+                syncProjectEditPenaltySwitchBusyState(switchNode);
             });
 
         return;
@@ -1655,25 +1653,39 @@ function toggleProjectEditPenaltySwitchInput(input) {
 
     projectEditPenaltyToggleState.set(rowKey, nextChecked);
     applyProjectEditPenaltyDataItemState(dataItem, nextAutoCheckData, nextAutoCheckString, nextChecked);
-    syncProjectEditPenaltySwitchNode(input, nextChecked);
+    syncProjectEditPenaltySwitchNode(switchNode, nextChecked);
     syncProjectEditPenaltyAutoCheckCell(row, nextAutoCheckData, nextAutoCheckString);
     setProjectEditPenaltyRowBusyState(rowKey, true);
-    syncProjectEditPenaltySwitchBusyState(input);
+    syncProjectEditPenaltySwitchBusyState(switchNode);
 
     sendProjectEditPenaltyGroupUpdate(dataItem, nextAutoCheckData, nextAutoCheckString)
         .done((response) => {
             const responseItem = getProjectEditPenaltyResponseItem(response, dataItem);
+            const hasResponseAutoCheckState = hasProjectEditPenaltyAutoCheckStateInResponse(responseItem);
             if (responseItem) {
                 syncProjectEditPenaltyDataItemFromResponse(dataItem, responseItem);
-            } else {
-                applyProjectEditPenaltyDataItemState(dataItem, nextAutoCheckData, nextAutoCheckString, nextChecked);
             }
 
-            const resolvedAutoCheckData = getProjectEditPenaltyAutoCheckEntries(dataItem);
-            const resolvedChecked = getProjectEditPenaltyInitialState(dataItem);
+            const resolvedAutoCheckData = hasResponseAutoCheckState
+                ? getProjectEditPenaltyAutoCheckEntries(dataItem)
+                : nextAutoCheckData;
+            const resolvedAutoCheckString = hasResponseAutoCheckState
+                ? getProjectEditPenaltyAutoCheckStringValue(dataItem)
+                : nextAutoCheckString;
+            const resolvedChecked = hasResponseAutoCheckState
+                ? getProjectEditPenaltyInitialState(dataItem)
+                : nextChecked;
+
+            applyProjectEditPenaltyDataItemState(
+                dataItem,
+                resolvedAutoCheckData,
+                resolvedAutoCheckString,
+                resolvedChecked
+            );
+
             projectEditPenaltyToggleState.set(rowKey, resolvedChecked);
-            syncProjectEditPenaltySwitchNode(input, resolvedChecked);
-            syncProjectEditPenaltyAutoCheckCell(row, resolvedAutoCheckData, getProjectEditPenaltyAutoCheckStringValue(dataItem));
+            syncProjectEditPenaltySwitchNode(switchNode, resolvedChecked);
+            syncProjectEditPenaltyAutoCheckCell(row, resolvedAutoCheckData, resolvedAutoCheckString);
         })
         .fail((response) => {
             projectEditPenaltyToggleState.set(rowKey, previousChecked);
@@ -1683,7 +1695,7 @@ function toggleProjectEditPenaltySwitchInput(input) {
                 previousAutoCheckString,
                 previousChecked
             );
-            syncProjectEditPenaltySwitchNode(input, previousChecked);
+            syncProjectEditPenaltySwitchNode(switchNode, previousChecked);
             syncProjectEditPenaltyAutoCheckCell(row, previousAutoCheckData, previousAutoCheckString);
 
             if (typeof onFailAjax === "function") {
@@ -1694,23 +1706,28 @@ function toggleProjectEditPenaltySwitchInput(input) {
         })
         .always(() => {
             setProjectEditPenaltyRowBusyState(rowKey, false);
-            syncProjectEditPenaltySwitchBusyState(input);
+            syncProjectEditPenaltySwitchBusyState(switchNode);
         });
 }
 
-function syncProjectEditPenaltySwitchNode(input, checked) {
-    if (!(input instanceof HTMLInputElement)) {
-        return;
+function getProjectEditPenaltySwitchChecked(switchNode) {
+    if (!(switchNode instanceof HTMLElement)) {
+        return false;
     }
 
-    const switchNode = input.closest(`.${PROJECT_EDIT_PENALTY_SWITCH_CLASS}`);
+    if (switchNode.getAttribute("aria-checked") === "true") {
+        return true;
+    }
+
+    return switchNode.classList.contains("k-switch-on");
+}
+
+function syncProjectEditPenaltySwitchNode(switchNode, checked) {
     if (!(switchNode instanceof HTMLElement)) {
-        input.checked = checked === true;
         return;
     }
 
     const isChecked = checked === true;
-    input.checked = isChecked;
     switchNode.setAttribute("aria-checked", String(isChecked));
     switchNode.classList.toggle("k-switch-on", isChecked);
     switchNode.classList.toggle("k-switch-off", !isChecked);
@@ -1733,18 +1750,16 @@ function setProjectEditPenaltyRowBusyState(rowKey, isBusy) {
     projectEditPenaltyPendingRows.delete(rowKey);
 }
 
-function syncProjectEditPenaltySwitchBusyState(input) {
-    if (!(input instanceof HTMLInputElement)) {
+function syncProjectEditPenaltySwitchBusyState(switchNode) {
+    if (!(switchNode instanceof HTMLElement)) {
         return;
     }
 
-    const rowKey = String(input.dataset.qgaPenaltyRowKey || "").trim();
-    const switchNode = input.closest(`.${PROJECT_EDIT_PENALTY_SWITCH_CLASS}`);
+    const rowKey = String(switchNode.dataset.qgaPenaltyRowKey || "").trim();
     const isBusy = isProjectEditPenaltyRowBusy(rowKey);
 
-    input.disabled = isBusy;
-    if (!(switchNode instanceof HTMLElement)) {
-        return;
+    if (switchNode instanceof HTMLButtonElement) {
+        switchNode.disabled = isBusy;
     }
 
     switchNode.classList.toggle("qga-project-edit-penalty-switch--busy", isBusy);
@@ -2200,14 +2215,6 @@ function projectEditPenaltyPageBridgeBootstrap() {
             return;
         }
 
-        if (typeof dataItem.set === "function") {
-            try {
-                dataItem.set(fieldName, value);
-                return;
-            } catch (error) {
-            }
-        }
-
         dataItem[fieldName] = value;
     }
 
@@ -2296,8 +2303,11 @@ function projectEditPenaltyPageBridgeBootstrap() {
         params.set("NotVerifiedInterviewCount", stringifyPayloadValue(dataItem && dataItem.NotVerifiedInterviewCount));
         params.set("Order", stringifyPayloadValue(dataItem && dataItem.Order));
         params.set("IsCheck", stringifyBoolean(dataItem && dataItem.IsCheck));
-        params.set("AutoCheckString", stringifyPayloadValue(autoCheckString));
+        if (autoCheckString != null && String(autoCheckString).trim() !== "") {
+            params.set("AutoCheckString", stringifyPayloadValue(autoCheckString));
+        }
         params.set("IsMultiCheck", stringifyBoolean(dataItem && dataItem.IsMultiCheck));
+        params.set("BrandTags", "");
         params.set("BrandTagsString", stringifyPayloadValue(dataItem && dataItem.BrandTagsString));
 
         if (shouldSendAutoCheckData) {
@@ -2549,7 +2559,8 @@ function buildProjectEditPenaltyDisplayAutoCheckString(entries, fallbackValue) {
             .join(", ");
     }
 
-    return String(fallbackValue || "").trim();
+    const normalizedFallbackValue = String(fallbackValue || "").trim();
+    return normalizedFallbackValue || "Не выбрано";
 }
 
 function getProjectEditPenaltyAutoCheckStringValue(dataItem) {
@@ -2576,14 +2587,6 @@ function applyProjectEditPenaltyDataItemState(dataItem, autoCheckData, autoCheck
 function setProjectEditPenaltyDataItemField(dataItem, fieldName, value) {
     if (!dataItem || typeof dataItem !== "object" || !fieldName) {
         return;
-    }
-
-    if (typeof dataItem.set === "function") {
-        try {
-            dataItem.set(fieldName, value);
-            return;
-        } catch (error) {
-        }
     }
 
     dataItem[fieldName] = value;
@@ -2702,8 +2705,11 @@ function buildProjectEditPenaltyGroupUpdatePayload(dataItem, autoCheckData, auto
     );
     params.set("Order", stringifyProjectEditPenaltyPayloadValue(dataItem && dataItem.Order));
     params.set("IsCheck", stringifyProjectEditPenaltyBoolean(dataItem && dataItem.IsCheck));
-    params.set("AutoCheckString", stringifyProjectEditPenaltyPayloadValue(autoCheckString));
+    if (autoCheckString != null && String(autoCheckString).trim() !== "") {
+        params.set("AutoCheckString", stringifyProjectEditPenaltyPayloadValue(autoCheckString));
+    }
     params.set("IsMultiCheck", stringifyProjectEditPenaltyBoolean(dataItem && dataItem.IsMultiCheck));
+    params.set("BrandTags", "");
     params.set("BrandTagsString", stringifyProjectEditPenaltyPayloadValue(dataItem && dataItem.BrandTagsString));
 
     if (shouldSendAutoCheckData) {
@@ -2762,6 +2768,17 @@ function getProjectEditPenaltyResponseItem(response, dataItem) {
     return rows.find((row) => stringifyProjectEditPenaltyPayloadValue(row && row.Id) === targetId) || rows[0] || null;
 }
 
+function hasProjectEditPenaltyAutoCheckStateInResponse(responseItem) {
+    return !!(
+        responseItem &&
+        typeof responseItem === "object" &&
+        (
+            Object.prototype.hasOwnProperty.call(responseItem, "AutoCheckData") ||
+            Object.prototype.hasOwnProperty.call(responseItem, "AutoCheckString")
+        )
+    );
+}
+
 function syncProjectEditPenaltyDataItemFromResponse(dataItem, responseItem) {
     if (!dataItem || typeof dataItem !== "object" || !responseItem || typeof responseItem !== "object") {
         return;
@@ -2776,7 +2793,11 @@ function syncProjectEditPenaltyDataItemFromResponse(dataItem, responseItem) {
         "NotVerifiedInterviewCount",
         "Order",
         "IsCheck",
-        "IsMultiCheck"
+        "IsMultiCheck",
+        "AutoCheckData",
+        "AutoCheckString",
+        "BrandTags",
+        "BrandTagsString"
     ].forEach((fieldName) => {
         if (Object.prototype.hasOwnProperty.call(responseItem, fieldName)) {
             setProjectEditPenaltyDataItemField(dataItem, fieldName, responseItem[fieldName]);
