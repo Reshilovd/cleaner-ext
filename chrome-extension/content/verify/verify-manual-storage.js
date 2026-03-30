@@ -207,15 +207,8 @@
         if (!projectId || !Array.isArray(bfrids) || bfrids.length === 0) {
             return;
         }
-        const merged = Array.from(getManualBfridsSetForProject(projectId));
-        for (const id of bfrids) {
-            const normalized = String(id).trim();
-            if (normalized) {
-                merged.push(normalized);
-            }
-        }
-        const uniq = Array.from(new Set(merged));
-        syncManualBfridsStores(projectId, uniq);
+        const merged = mergeManualBfridsLists(getManualBfridsListForProject(projectId), bfrids);
+        syncManualBfridsStores(projectId, merged);
     }
 
     function consumeManualBfridsForProject(projectId) {
@@ -255,6 +248,41 @@
         return set;
     }
 
+    function getManualBfridsListForProject(projectId) {
+        if (!projectId) {
+            return [];
+        }
+        const key = String(projectId);
+        const apiEntry = manualApiState && manualApiState[key];
+        const fromApi = parseManualBfridsValue(apiEntry && typeof apiEntry.bfrids === "string" ? apiEntry.bfrids : "");
+        const fromBuffer = Array.isArray(manualBfridsState[key]) ? manualBfridsState[key] : [];
+        return mergeManualBfridsLists(fromApi, fromBuffer);
+    }
+
+    function mergeManualBfridsLists(existingIds, newIds) {
+        const merged = [];
+        const seen = new Set();
+
+        const append = (ids) => {
+            if (!Array.isArray(ids)) {
+                return;
+            }
+            for (const id of ids) {
+                const normalized = String(id).trim();
+                if (!normalized || seen.has(normalized)) {
+                    continue;
+                }
+                seen.add(normalized);
+                merged.push(normalized);
+            }
+        };
+
+        append(existingIds);
+        append(newIds);
+
+        return merged;
+    }
+
     /** Есть ли сохранённый верификационный токен для ручной чистки по проекту (получен после открытия вкладки «Ручная чистка» и сохранения). */
     function hasVerificationTokenForProject(projectId) {
         if (!projectId) return false;
@@ -272,7 +300,7 @@
             return;
         }
         const key = String(projectId);
-        const list = bfridsArray.map((x) => String(x).trim()).filter(Boolean);
+        const list = mergeManualBfridsLists([], bfridsArray);
 
         manualBfridsState[key] = list.slice();
         saveManualBfridsState(manualBfridsState);
@@ -301,11 +329,7 @@
         }
         manualApiState = loadManualApiState();
         manualBfridsState = loadManualBfridsState();
-        const raw = (textarea.value || "").trim();
-        const idsInTextarea = raw
-            .split(/[\s,;]+/)
-            .map((x) => String(x).trim())
-            .filter(Boolean);
+        const idsInTextarea = parseManualBfridsValue(textarea.value || "");
 
         const key = String(projectId);
 
@@ -399,19 +423,7 @@
             return;
         }
 
-        const existingRaw = textarea.value || "";
-        const existingSet = new Set(
-            existingRaw
-                .split(/[\s,;]+/)
-                .map((x) => x.trim())
-                .filter(Boolean)
-        );
-
-        for (const id of bfrids) {
-            existingSet.add(String(id).trim());
-        }
-
-        const mergedArray = Array.from(existingSet);
+        const mergedArray = mergeManualBfridsLists(parseManualBfridsValue(textarea.value || ""), bfrids);
         const merged = mergedArray.join("\n");
         textarea.value = merged;
 
@@ -433,6 +445,104 @@
         attachManualBfridsTextareaSync(projectId);
     }
 
+    function parseManualBfridsValue(value) {
+        return String(value || "")
+            .split(/[\s,;]+/)
+            .map((x) => String(x).trim())
+            .filter(Boolean);
+    }
+
+    function getManualBfridsFieldFromDocument(doc) {
+        if (!doc || typeof doc.querySelector !== "function") {
+            return null;
+        }
+
+        const selectors = [
+            "#Bfrids",
+            "textarea[name='Bfrids']",
+            "input[name='Bfrids']"
+        ];
+
+        for (const selector of selectors) {
+            const field = doc.querySelector(selector);
+            if (field) {
+                return field;
+            }
+        }
+
+        return null;
+    }
+
+    function getManualStateSnapshotFromDocument(doc) {
+        if (!doc || typeof doc.querySelector !== "function") {
+            return null;
+        }
+
+        const bfridsField = getManualBfridsFieldFromDocument(doc);
+        const verificationToken = findVerificationTokenInDocument(doc);
+        if (!bfridsField && !verificationToken) {
+            return null;
+        }
+
+        const rawValue =
+            bfridsField && "value" in bfridsField
+                ? bfridsField.value || ""
+                : bfridsField
+                    ? bfridsField.textContent || ""
+                    : "";
+
+        return {
+            bfrids: parseManualBfridsValue(rawValue),
+            hasBfridsField: !!bfridsField,
+            token: verificationToken || ""
+        };
+    }
+
+    async function loadActualManualStateSnapshot(projectId) {
+        if (!projectId) {
+            return null;
+        }
+
+        const currentProjectId = getProjectIdFromEditPage();
+        if (currentProjectId && String(currentProjectId) === String(projectId)) {
+            const currentSnapshot = getManualStateSnapshotFromDocument(document);
+            if (currentSnapshot && currentSnapshot.hasBfridsField) {
+                return currentSnapshot;
+            }
+        }
+
+        const manualPageUrl = buildManualEditPageUrl(projectId);
+        if (!manualPageUrl) {
+            return null;
+        }
+
+        try {
+            const response = await fetch(manualPageUrl, {
+                method: "GET",
+                credentials: "same-origin",
+                cache: "no-store",
+                headers: {
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error(`Manual state snapshot request failed with status ${response.status}`);
+            }
+
+            const html = await response.text();
+            if (!String(html || "").trim()) {
+                return null;
+            }
+
+            const parser = new DOMParser();
+            return getManualStateSnapshotFromDocument(parser.parseFromString(html, "text/html"));
+        } catch (error) {
+            console.warn("[QGA] Не удалось загрузить актуальное состояние ручной чистки:", error);
+            return null;
+        }
+    }
+
     async function sendManualBfridsToServer(projectId, bfrids) {
         if (!projectId || !Array.isArray(bfrids) || bfrids.length === 0) {
             return;
@@ -447,11 +557,13 @@
         const key = String(projectId);
         const stored =
             manualApiState && typeof manualApiState[key] === "object" ? manualApiState[key] : null;
-
-        const existingBfridsRaw =
-            stored && typeof stored.bfrids === "string" ? stored.bfrids : "";
+        const actualSnapshot = await loadActualManualStateSnapshot(projectId);
+        const existingBfrids = actualSnapshot && actualSnapshot.hasBfridsField
+            ? actualSnapshot.bfrids.slice()
+            : parseManualBfridsValue(stored && typeof stored.bfrids === "string" ? stored.bfrids : "");
 
         let verificationToken =
+            (actualSnapshot && typeof actualSnapshot.token === "string" ? actualSnapshot.token : "") ||
             (stored && typeof stored.token === "string" ? stored.token : "") ||
             findVerificationTokenInDocument(document);
 
@@ -468,21 +580,8 @@
             return;
         }
 
-        const mergedSet = new Set(
-            existingBfridsRaw
-                .split(/[\s,;]+/)
-                .map((x) => x.trim())
-                .filter(Boolean)
-        );
-
-        for (const id of bfrids) {
-            const normalized = String(id).trim();
-            if (normalized) {
-                mergedSet.add(normalized);
-            }
-        }
-
-        const mergedBfrids = Array.from(mergedSet).join("\n");
+        const mergedArray = mergeManualBfridsLists(existingBfrids, bfrids);
+        const mergedBfrids = mergedArray.join("\n");
 
         const body = new URLSearchParams();
         body.set("ProjectId", String(projectId));
@@ -520,7 +619,6 @@
                     bfrids: mergedBfrids
                 };
                 saveManualApiState(manualApiState);
-                const mergedArray = mergedBfrids.split(/[\s,;]+/).map((x) => x.trim()).filter(Boolean);
                 manualBfridsState[key] = mergedArray;
                 saveManualBfridsState(manualBfridsState);
             } catch (updateError) {
@@ -567,4 +665,13 @@
         const base = origin.replace(/\/+$/, "");
         // POST /api/Project/Manual/{ProjectId} — как в стандартном запросе.
         return base + "/api/Project/Manual/" + encodeURIComponent(String(projectId));
+    }
+
+    function buildManualEditPageUrl(projectId) {
+        if (!projectId) {
+            return null;
+        }
+        const origin = window.location.origin || "";
+        const base = origin.replace(/\/+$/, "");
+        return base + "/lk/Project/Edit/" + encodeURIComponent(String(projectId));
     }
