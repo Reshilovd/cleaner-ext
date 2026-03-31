@@ -622,7 +622,6 @@
             }
             .qga-project-edit-stats-host--danger {
                 background: #fee2e2 !important;
-                border-color: #fca5a5 !important;
             }
             .qga-project-edit-stats-host--danger a,
             .qga-project-edit-stats-host--danger .c_box_content {
@@ -668,7 +667,6 @@
             }
             .qga-project-edit-stats-breakdown-part--danger {
                 background: #fee2e2 !important;
-                box-shadow: inset 0 0 0 1px #fca5a5;
             }
             .qga-project-edit-stats-breakdown-part--danger .qga-project-edit-stats-breakdown-label,
             .qga-project-edit-stats-breakdown-part--danger .qga-project-edit-stats-breakdown-value {
