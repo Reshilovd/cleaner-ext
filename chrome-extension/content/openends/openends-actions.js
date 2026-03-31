@@ -187,6 +187,11 @@
     function startBulkGrouping() {
         // Массовая обработка всегда стартует "с нуля".
         state.processedKeys.clear();
+        if (state.bulkAttemptedKeysInPass instanceof Set) {
+            state.bulkAttemptedKeysInPass.clear();
+        } else {
+            state.bulkAttemptedKeysInPass = new Set();
+        }
         saveStoredState();
         renderStats();
         renderGroups();
@@ -205,6 +210,63 @@
         runBulkGroupingStep();
     }
 
+    function getBulkAttemptedKeysInPass() {
+        if (!(state.bulkAttemptedKeysInPass instanceof Set)) {
+            state.bulkAttemptedKeysInPass = new Set();
+        }
+        return state.bulkAttemptedKeysInPass;
+    }
+
+    function getBulkMaxPasses() {
+        return clampInt(Number(state.bulkMaxPasses), 1, 50, 8);
+    }
+
+    function getNextBulkGroupInPass() {
+        const attemptedKeys = getBulkAttemptedKeysInPass();
+        return state.groups.find((group) => group && !attemptedKeys.has(group.key)) || null;
+    }
+
+    function scheduleNextBulkGroupingStep(delayMs = 0) {
+        if (!state.bulkRunning) {
+            return;
+        }
+        if (state.bulkTimer) {
+            clearTimeout(state.bulkTimer);
+        }
+        const delay = clampInt(Number(delayMs), 0, 10000, 0);
+        state.bulkTimer = setTimeout(() => {
+            state.bulkTimer = null;
+            runBulkGroupingStep();
+        }, delay);
+    }
+
+    function stopBulkGroupingBecauseNoProgress() {
+        const maxPasses = getBulkMaxPasses();
+        console.warn(
+            `[QGA] Массовая группировка остановлена: после ${maxPasses} проходов на странице остались кластеры, которые не меняются после попыток group().`
+        );
+        stopBulkGrouping();
+        alert(
+            `Массовая группировка остановлена: после ${maxPasses} проходов на странице остались кластеры, ` +
+                `которые не меняются после попыток группировки. Проверьте оставшиеся строки вручную.`
+        );
+    }
+
+    function advanceBulkGroupingPass() {
+        const maxPasses = getBulkMaxPasses();
+        if (state.bulkPass >= maxPasses) {
+            stopBulkGroupingBecauseNoProgress();
+            return false;
+        }
+
+        state.bulkPass += 1;
+        state.bulkGroupsInPass = 0;
+        getBulkAttemptedKeysInPass().clear();
+        console.info(`[QGA] Массовая группировка: переход к проходу ${state.bulkPass} из ${maxPasses}.`);
+        scheduleNextBulkGroupingStep(0);
+        return true;
+    }
+
     function stopBulkGrouping() {
         state.bulkRunning = false;
         if (state.progressBarWrap) {
@@ -213,6 +275,9 @@
         if (state.bulkTimer) {
             clearTimeout(state.bulkTimer);
             state.bulkTimer = null;
+        }
+        if (state.bulkAttemptedKeysInPass instanceof Set) {
+            state.bulkAttemptedKeysInPass.clear();
         }
         updateBulkButtonState();
         renderGroups();
@@ -225,9 +290,13 @@
 
         rescan();
 
-        // В массовом режиме просто берём первый доступный кластер,
-        // пока их список не опустеет, не фильтруя по processedKeys.
-        const next = state.groups[0];
+        // Внутри одного bulk-прохода не повторяем один и тот же cluster key:
+        // если после group() сетка не изменилась, этот key будет отложен до следующего pass.
+        const next = getNextBulkGroupInPass();
+        if (!next && state.groups.length > 0) {
+            advanceBulkGroupingPass();
+            return;
+        }
         if (!next) {
             // Массовая группировка завершена: пересобираем информацию
             // о сгруппированных переменных на странице OpenEnds,
@@ -244,6 +313,7 @@
         // В массовом режиме не подсвечиваем строки и не скроллим к ним,
         // чтобы процесс оставался незаметным для пользователя.
         selectGroup(next, { markProcessed: false, clearSelection: true, silent: true });
+        getBulkAttemptedKeysInPass().add(next.key);
         if (!triggerGroupAction({ scheduleRescan: false })) {
             stopBulkGrouping();
             return;
@@ -260,11 +330,7 @@
             DEFAULT_SETTINGS.postGroupRescanDelayMs
         ) + 400;
 
-        state.bulkTimer = setTimeout(() => {
-            state.bulkTimer = null;
-            rescan();
-            runBulkGroupingStep();
-        }, delay);
+        scheduleNextBulkGroupingStep(delay);
     }
 
     function getPagerRoot() {

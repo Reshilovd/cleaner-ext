@@ -112,6 +112,7 @@ var state = typeof state !== "undefined" && state ? state : {
         bulkGroupsTotal: 0,
         bulkProgressTotal: null,
         bulkMaxPasses: 8,
+        bulkAttemptedKeysInPass: new Set(),
         observer: null,
         panel: null,
         listNode: null,
