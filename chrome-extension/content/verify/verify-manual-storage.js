@@ -207,8 +207,11 @@
         if (!projectId || !Array.isArray(bfrids) || bfrids.length === 0) {
             return;
         }
-        const merged = mergeManualBfridsLists(getManualBfridsListForProject(projectId), bfrids);
-        syncManualBfridsStores(projectId, merged);
+        const key = String(projectId);
+        const currentPending = Array.isArray(manualBfridsState[key]) ? manualBfridsState[key] : [];
+        const merged = mergeManualBfridsLists(currentPending, bfrids);
+        manualBfridsState[key] = merged.slice();
+        saveManualBfridsState(manualBfridsState);
     }
 
     function consumeManualBfridsForProject(projectId) {
@@ -291,6 +294,7 @@
         return !!(entry && typeof entry.token === "string" && entry.token.trim() !== "");
     }
 
+
     /**
      * Записывает один и тот же список bfrid в оба хранилища (manualBfridsState и manualApiState.bfrids),
      * чтобы кол-во и состав всегда совпадали.
@@ -342,7 +346,7 @@
         };
         saveManualApiState(manualApiState);
 
-        manualBfridsState[key] = idsInTextarea.slice();
+        delete manualBfridsState[key];
         saveManualBfridsState(manualBfridsState);
     }
 
@@ -428,19 +432,11 @@
         textarea.value = merged;
 
         try {
-            const token = findVerificationTokenInDocument(document);
             const key = String(projectId);
-            const prev =
-                manualApiState && typeof manualApiState[key] === "object" ? manualApiState[key] : {};
-            manualApiState[key] = {
-                token: token || prev.token || "",
-                bfrids: merged
-            };
-            saveManualApiState(manualApiState);
-            manualBfridsState[key] = mergedArray.slice();
+            manualBfridsState[key] = bfrids.slice();
             saveManualBfridsState(manualBfridsState);
         } catch (error) {
-            console.warn("[QGA] Не удалось сохранить состояние API ручной чистки:", error);
+            console.warn("[QGA] Не удалось сохранить pending-буфер ручной чистки:", error);
         }
         attachManualBfridsTextareaSync(projectId);
     }
@@ -496,6 +492,112 @@
             hasBfridsField: !!bfridsField,
             token: verificationToken || ""
         };
+    }
+
+    function extractManualBfridsFromApiPayload(payload) {
+        if (payload == null) {
+            return null;
+        }
+
+        if (typeof payload === "string") {
+            return parseManualBfridsValue(payload);
+        }
+
+        if (Array.isArray(payload)) {
+            return payload
+                .map((entry) => {
+                    if (entry == null) {
+                        return "";
+                    }
+                    if (typeof entry === "string" || typeof entry === "number") {
+                        return String(entry).trim();
+                    }
+                    if (typeof entry === "object") {
+                        const direct =
+                            entry.Bfrid != null ? entry.Bfrid :
+                            entry.bfrid != null ? entry.bfrid :
+                            entry.Id != null ? entry.Id :
+                            entry.id != null ? entry.id :
+                            "";
+                        return String(direct).trim();
+                    }
+                    return "";
+                })
+                .filter(Boolean);
+        }
+
+        if (typeof payload !== "object") {
+            return null;
+        }
+
+        const directKeys = ["Bfrids", "bfrids", "ManualBfrids", "manualBfrids"];
+        for (const key of directKeys) {
+            if (Object.prototype.hasOwnProperty.call(payload, key)) {
+                return extractManualBfridsFromApiPayload(payload[key]);
+            }
+        }
+
+        const nestedKeys = ["Data", "data", "Result", "result", "Model", "model"];
+        for (const key of nestedKeys) {
+            if (!Object.prototype.hasOwnProperty.call(payload, key)) {
+                continue;
+            }
+            const nested = extractManualBfridsFromApiPayload(payload[key]);
+            if (nested !== null) {
+                return nested;
+            }
+        }
+
+        return null;
+    }
+
+    async function loadActualManualBfridsFromApi(projectId) {
+        const manualUrl = buildManualEditPostUrl(projectId);
+        if (!manualUrl) {
+            return null;
+        }
+
+        try {
+            const response = await fetch(manualUrl, {
+                method: "GET",
+                credentials: "same-origin",
+                cache: "no-store",
+                headers: {
+                    "Accept": "application/json,text/plain,text/html,*/*"
+                }
+            });
+
+            if (!response.ok) {
+                return null;
+            }
+
+            const contentType = String(response.headers.get("content-type") || "").toLowerCase();
+            if (contentType.includes("json")) {
+                const payload = await response.json();
+                return extractManualBfridsFromApiPayload(payload);
+            }
+
+            const text = await response.text();
+            if (!String(text || "").trim()) {
+                return [];
+            }
+
+            const looksLikeHtml =
+                contentType.includes("html") ||
+                /<\s*html[\s>]/i.test(text) ||
+                /<\s*form[\s>]/i.test(text);
+
+            if (looksLikeHtml) {
+                const parser = new DOMParser();
+                const snapshot = getManualStateSnapshotFromDocument(parser.parseFromString(text, "text/html"));
+                return snapshot && snapshot.hasBfridsField ? snapshot.bfrids.slice() : null;
+            }
+
+            return parseManualBfridsValue(text);
+        } catch (error) {
+            console.warn("[QGA] Не удалось загрузить текущий список bfrid через API:", error);
+            return null;
+        }
     }
 
     async function loadActualManualStateSnapshot(projectId) {
@@ -558,14 +660,38 @@
         const stored =
             manualApiState && typeof manualApiState[key] === "object" ? manualApiState[key] : null;
         const actualSnapshot = await loadActualManualStateSnapshot(projectId);
-        const existingBfrids = actualSnapshot && actualSnapshot.hasBfridsField
-            ? actualSnapshot.bfrids.slice()
-            : parseManualBfridsValue(stored && typeof stored.bfrids === "string" ? stored.bfrids : "");
+        const currentNewBfrids = mergeManualBfridsLists([], bfrids);
+        const storedBfrids = parseManualBfridsValue(
+            stored && typeof stored.bfrids === "string" ? stored.bfrids : ""
+        );
+        const storedBfridsBeforeCurrentAdd = storedBfrids.filter((id) => {
+            return !currentNewBfrids.includes(String(id).trim());
+        });
+        const actualServerBfrids =
+            actualSnapshot && actualSnapshot.hasBfridsField
+                ? actualSnapshot.bfrids.slice()
+                : await loadActualManualBfridsFromApi(projectId);
+        const existingBfrids = Array.isArray(actualServerBfrids)
+            ? mergeManualBfridsLists(actualServerBfrids, storedBfridsBeforeCurrentAdd)
+            : storedBfridsBeforeCurrentAdd;
 
         let verificationToken =
             (actualSnapshot && typeof actualSnapshot.token === "string" ? actualSnapshot.token : "") ||
             (stored && typeof stored.token === "string" ? stored.token : "") ||
             findVerificationTokenInDocument(document);
+
+        if (!Array.isArray(actualServerBfrids) && storedBfridsBeforeCurrentAdd.length === 0) {
+            console.warn(
+                "[QGA] Не удалось определить текущий список ручной чистки для проекта, отменяем отправку чтобы не перезаписать серверное состояние:",
+                projectId
+            );
+            alert(
+                "Не удалось прочитать текущий список ручной чистки. " +
+                    "Чтобы не перезаписать уже добавленные ID, откройте вкладку «Ручная чистка» проекта, " +
+                    "проверьте список и повторите попытку."
+            );
+            return;
+        }
 
         if (!verificationToken) {
             console.warn(
@@ -580,33 +706,55 @@
             return;
         }
 
-        const mergedArray = mergeManualBfridsLists(existingBfrids, bfrids);
-        const mergedBfrids = mergedArray.join("\n");
-
-        const body = new URLSearchParams();
-        body.set("ProjectId", String(projectId));
-        body.set("Bfrids", mergedBfrids);
-        body.set("__RequestVerificationToken", verificationToken);
+        const mergedArray = mergeManualBfridsLists(existingBfrids, currentNewBfrids);
 
         try {
-            const response = await fetch(manualUrl, {
-                method: "POST",
-                credentials: "same-origin",
-                headers: {
-                    "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-                    "X-Requested-With": "XMLHttpRequest"
-                },
-                body: body.toString()
-            });
+            const postManualBfrids = async (bfridsArray, requestVerificationToken) => {
+                const body = new URLSearchParams();
+                body.set("ProjectId", String(projectId));
+                body.set("Bfrids", mergeManualBfridsLists([], bfridsArray).join("\n"));
+                body.set("__RequestVerificationToken", requestVerificationToken);
 
-            if (!response.ok) {
-                console.error(
-                    "[QGA] Не удалось сохранить данные ручной чистки через API:",
-                    response.status,
-                    response.statusText
-                );
-                return;
-            }
+                const response = await fetch(manualUrl, {
+                    method: "POST",
+                    credentials: "same-origin",
+                    headers: {
+                        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+                        "X-Requested-With": "XMLHttpRequest"
+                    },
+                    body: body.toString()
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Manual cleanup save failed: ${response.status} ${response.statusText}`);
+                }
+            };
+
+            const loadPersistedManualState = async (fallbackToken, fallbackBfridsArray) => {
+                const snapshot = await loadActualManualStateSnapshot(projectId);
+                const refreshedBfrids =
+                    snapshot && snapshot.hasBfridsField
+                        ? snapshot.bfrids.slice()
+                        : await loadActualManualBfridsFromApi(projectId);
+
+                return {
+                    token:
+                        (snapshot && typeof snapshot.token === "string" ? snapshot.token : "") ||
+                        fallbackToken ||
+                        "",
+                    bfrids:
+                        Array.isArray(refreshedBfrids) && refreshedBfrids.length >= fallbackBfridsArray.length
+                            ? mergeManualBfridsLists([], refreshedBfrids)
+                            : mergeManualBfridsLists([], fallbackBfridsArray)
+                };
+            };
+
+            await postManualBfrids(mergedArray, verificationToken);
+
+            const persistedState = await loadPersistedManualState(verificationToken, mergedArray);
+            const finalBfridsArray = persistedState.bfrids.slice();
+            const finalToken = persistedState.token;
+            const finalBfrids = finalBfridsArray.join("\n");
 
             try {
                 const key = String(projectId);
@@ -615,11 +763,11 @@
                         ? manualApiState[key]
                         : {};
                 manualApiState[key] = {
-                    token: verificationToken || prev.token || "",
-                    bfrids: mergedBfrids
+                    token: finalToken || verificationToken || prev.token || "",
+                    bfrids: finalBfrids
                 };
                 saveManualApiState(manualApiState);
-                manualBfridsState[key] = mergedArray;
+                delete manualBfridsState[key];
                 saveManualBfridsState(manualBfridsState);
             } catch (updateError) {
                 console.warn("[QGA] Не удалось обновить локальный снимок API ручной чистки:", updateError);
@@ -668,10 +816,16 @@
     }
 
     function buildManualEditPageUrl(projectId) {
-        if (!projectId) {
+        const editProjectId =
+            typeof getProjectIdForGroupsLookup === "function"
+                ? getProjectIdForGroupsLookup()
+                : null;
+        const resolvedProjectId = editProjectId || projectId;
+
+        if (!resolvedProjectId) {
             return null;
         }
         const origin = window.location.origin || "";
         const base = origin.replace(/\/+$/, "");
-        return base + "/lk/Project/Edit/" + encodeURIComponent(String(projectId));
+        return base + "/lk/Project/Edit/" + encodeURIComponent(String(resolvedProjectId));
     }

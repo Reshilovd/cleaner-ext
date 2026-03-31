@@ -133,7 +133,6 @@
         manualApiState = loadManualApiState();
         const alreadyInManualSet = getManualBfridsSetForProject(projectIdForModal);
         const isAlreadyInManual = alreadyInManualSet.has(respondentIdStr);
-        const hasManualToken = hasVerificationTokenForProject(projectIdForModal);
 
         modal.classList.remove("qga-verify-modal--candidates");
         if (isAlreadyInManual) {
@@ -152,8 +151,8 @@
                 : "Добавить в ручную чистку (по нажатию «Проверить страницу»)";
             manualCheckbox.dataset.respondentId = respondentIdStr;
             manualCheckbox.checked = isAlreadyInManual || state.verifyPendingManualBfrids.has(respondentIdStr);
-            manualCheckbox.disabled = isAlreadyInManual || isIncorrectFromRating || !hasManualToken;
-            if (!isAlreadyInManual && !isIncorrectFromRating && hasManualToken) {
+            manualCheckbox.disabled = isAlreadyInManual || isIncorrectFromRating;
+            if (!isAlreadyInManual && !isIncorrectFromRating) {
                 manualCheckbox.addEventListener("change", () => {
                     const id = manualCheckbox.dataset.respondentId;
                     if (!id) return;
@@ -170,15 +169,6 @@
             manualLabel.appendChild(manualCheckbox);
             manualLabel.appendChild(document.createTextNode(" В ручную чистку"));
             footerNode.appendChild(manualLabel);
-            if (!hasManualToken) {
-                const manualHint = document.createElement("div");
-                manualHint.className = "qga-verify-modal__manual-hint";
-                manualHint.style.marginTop = "6px";
-                manualHint.style.fontSize = "12px";
-                manualHint.style.color = "#6b7280";
-                manualHint.textContent = "Чтобы добавить в ручную чистку, откройте вкладку «Ручная чистка» этого проекта, нажмите «Добавить брак» и сохраните.";
-                footerNode.appendChild(manualHint);
-            }
         }
 
         modal.style.display = "flex";
@@ -251,21 +241,7 @@
             manualBfridsState = loadManualBfridsState();
             manualApiState = loadManualApiState();
             const alreadyInManualSet = getManualBfridsSetForProject(projectIdCandidates);
-            const hasManualTokenCandidates = hasVerificationTokenForProject(projectIdCandidates);
             const fragment = document.createDocumentFragment();
-
-            if (!hasManualTokenCandidates && bodyNode) {
-                const manualHint = document.createElement("div");
-                manualHint.className = "qga-verify-modal__manual-hint";
-                manualHint.style.padding = "8px 12px";
-                manualHint.style.marginBottom = "8px";
-                manualHint.style.fontSize = "12px";
-                manualHint.style.color = "#6b7280";
-                manualHint.style.background = "#f3f4f6";
-                manualHint.style.borderRadius = "4px";
-                manualHint.textContent = "Чтобы добавлять респондентов в ручную чистку, откройте вкладку «Ручная чистка» этого проекта, нажмите «Добавить брак» и сохраните.";
-                bodyNode.insertBefore(manualHint, listNode);
-            }
 
             const REASON_CODE_BG_COLOR = {
                 1: "#fee2e2",
@@ -337,8 +313,8 @@
                     : "Добавить в ручную чистку (по нажатию «Проверить страницу»)";
                 manualCheckbox.dataset.respondentId = respondentIdStr;
                 manualCheckbox.checked = isAlreadyInManual || state.verifyPendingManualBfrids.has(respondentIdStr);
-                manualCheckbox.disabled = isAlreadyInManual || isIncorrectFromRating || !hasManualTokenCandidates;
-                if (!isAlreadyInManual && !isIncorrectFromRating && hasManualTokenCandidates) {
+                manualCheckbox.disabled = isAlreadyInManual || isIncorrectFromRating;
+                if (!isAlreadyInManual && !isIncorrectFromRating) {
                     manualCheckbox.addEventListener("change", () => {
                         const id = manualCheckbox.dataset.respondentId;
                         if (!id) return;
