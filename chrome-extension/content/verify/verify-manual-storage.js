@@ -348,6 +348,7 @@
 
         delete manualBfridsState[key];
         saveManualBfridsState(manualBfridsState);
+        updateManualBfridsCounter(projectId, idsInTextarea);
     }
 
     function attachManualBfridsTextareaSync(projectId) {
@@ -360,6 +361,7 @@
         textarea.addEventListener("input", sync);
         textarea.addEventListener("blur", sync);
         textarea.addEventListener("change", sync);
+        updateManualBfridsCounter(projectId, parseManualBfridsValue(textarea.value || ""));
     }
 
     function setupManualPageIntegration() {
@@ -374,6 +376,8 @@
                 return;
             }
             if (button.dataset.qgaManualBfridBound === "1") {
+                attachManualBfridsTextareaSync(projectId);
+                updateManualBfridsCounter(projectId);
                 return;
             }
             button.dataset.qgaManualBfridBound = "1";
@@ -390,6 +394,7 @@
                 }, 0);
             });
             attachManualBfridsTextareaSync(projectId);
+            updateManualBfridsCounter(projectId);
         };
 
         attach();
@@ -439,6 +444,7 @@
             console.warn("[QGA] Не удалось сохранить pending-буфер ручной чистки:", error);
         }
         attachManualBfridsTextareaSync(projectId);
+        updateManualBfridsCounter(projectId, mergedArray);
     }
 
     function parseManualBfridsValue(value) {
@@ -446,6 +452,54 @@
             .split(/[\s,;]+/)
             .map((x) => String(x).trim())
             .filter(Boolean);
+    }
+
+    function countManualBfrids(ids) {
+        if (!Array.isArray(ids) || ids.length === 0) {
+            return 0;
+        }
+        return new Set(ids.map((id) => String(id).trim()).filter(Boolean)).size;
+    }
+
+    function getManualBfridsCounterHost() {
+        return document.querySelector("#divManual > form > div > div.col-4 > div > div.row.c_table_header > div");
+    }
+
+    function ensureManualBfridsCounter() {
+        const host = getManualBfridsCounterHost();
+        if (!host) {
+            return null;
+        }
+
+        let counter = host.querySelector("#qga-manual-bfrids-counter");
+        if (counter) {
+            return counter;
+        }
+
+        counter = document.createElement("span");
+        counter.id = "qga-manual-bfrids-counter";
+        counter.className = "qga-manual-bfrids-counter";
+        counter.textContent = "0";
+        host.appendChild(document.createTextNode(" "));
+        host.appendChild(counter);
+        return counter;
+    }
+
+    function updateManualBfridsCounter(projectId, idsOverride) {
+        const counter = ensureManualBfridsCounter();
+        if (!counter) {
+            return;
+        }
+
+        const ids = Array.isArray(idsOverride)
+            ? idsOverride
+            : projectId
+                ? getManualBfridsListForProject(projectId)
+                : [];
+        const count = countManualBfrids(ids);
+        counter.textContent = String(count);
+        counter.title = `ID в ручной чистке: ${count}`;
+        counter.setAttribute("aria-label", `ID в ручной чистке: ${count}`);
     }
 
     function getManualBfridsFieldFromDocument(doc) {

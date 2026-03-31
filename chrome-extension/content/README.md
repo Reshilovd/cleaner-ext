@@ -12,8 +12,8 @@
 - `pyrus` — извлечение payload из Pyrus, transport между страницами и autofill-flow в Cleaner.
 - `storage` — сохранение настроек панели OpenEnds.
 - `styles` — CSS для UI расширения.
-- `verify` — VerifyMain и часть логики страницы `Project/Edit`: respondent lookup, rating/manual state, модалки, project-edit stats и penalty-toggle.
-- `openends` — панель группировки OpenEnds, сканирование грида и bulk-операции.
+- `verify` — VerifyMain и часть логики страницы `Project/Edit`: respondent lookup, rating/manual state, синхронизация ручной чистки, модалки, project-edit stats и penalty-toggle.
+- `openends` — панель группировки OpenEnds, сканирование грида, bulk-операции и защита bulk-проходов от зацикливания.
 
 Важно:
 
