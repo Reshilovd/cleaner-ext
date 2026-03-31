@@ -353,7 +353,11 @@
 
     function attachManualBfridsTextareaSync(projectId) {
         const textarea = document.getElementById("Bfrids");
-        if (!textarea || !projectId || textarea.dataset.qgaBfridsSyncAttached === "1") {
+        if (!textarea || !projectId) {
+            return;
+        }
+        updateManualBfridsCounter(projectId, parseManualBfridsValue(textarea.value || ""));
+        if (textarea.dataset.qgaBfridsSyncAttached === "1") {
             return;
         }
         textarea.dataset.qgaBfridsSyncAttached = "1";
@@ -361,7 +365,6 @@
         textarea.addEventListener("input", sync);
         textarea.addEventListener("blur", sync);
         textarea.addEventListener("change", sync);
-        updateManualBfridsCounter(projectId, parseManualBfridsValue(textarea.value || ""));
     }
 
     function setupManualPageIntegration() {
@@ -491,8 +494,11 @@
             return;
         }
 
+        const manualBfridsField = getManualBfridsFieldFromDocument(document);
         const ids = Array.isArray(idsOverride)
             ? idsOverride
+            : manualBfridsField && "value" in manualBfridsField
+                ? parseManualBfridsValue(manualBfridsField.value || "")
             : projectId
                 ? getManualBfridsListForProject(projectId)
                 : [];
