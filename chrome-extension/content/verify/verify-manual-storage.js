@@ -1,5 +1,14 @@
 "use strict";
 
+var openEndsGroupsRefreshInterval =
+    typeof openEndsGroupsRefreshInterval !== "undefined" ? openEndsGroupsRefreshInterval : null;
+var openEndsGroupsRefreshObserver =
+    typeof openEndsGroupsRefreshObserver !== "undefined" ? openEndsGroupsRefreshObserver : null;
+var openEndsGroupsRefreshStopTimer =
+    typeof openEndsGroupsRefreshStopTimer !== "undefined" ? openEndsGroupsRefreshStopTimer : null;
+var openEndsGroupsRefreshDebounceTimer =
+    typeof openEndsGroupsRefreshDebounceTimer !== "undefined" ? openEndsGroupsRefreshDebounceTimer : null;
+
     function getProjectIdForVerify() {
         const byId = document.getElementById("ProjectId");
         if (byId && "value" in byId && byId.value) {
@@ -51,6 +60,74 @@
         } catch (e) {}
     }
 
+    function clearScheduledOpenEndsGroupsRefresh() {
+        if (openEndsGroupsRefreshInterval) {
+            clearInterval(openEndsGroupsRefreshInterval);
+            openEndsGroupsRefreshInterval = null;
+        }
+
+        if (openEndsGroupsRefreshStopTimer) {
+            clearTimeout(openEndsGroupsRefreshStopTimer);
+            openEndsGroupsRefreshStopTimer = null;
+        }
+
+        if (openEndsGroupsRefreshDebounceTimer) {
+            clearTimeout(openEndsGroupsRefreshDebounceTimer);
+            openEndsGroupsRefreshDebounceTimer = null;
+        }
+
+        if (openEndsGroupsRefreshObserver) {
+            try {
+                openEndsGroupsRefreshObserver.disconnect();
+            } catch (error) {}
+            openEndsGroupsRefreshObserver = null;
+        }
+    }
+
+    function scheduleOpenEndsGroupsRefreshSync() {
+        clearScheduledOpenEndsGroupsRefresh();
+
+        if (!isOpenEndsHash()) {
+            return;
+        }
+
+        const runCollect = () => {
+            if (!isOpenEndsHash()) {
+                clearScheduledOpenEndsGroupsRefresh();
+                return;
+            }
+
+            collectOpenEndsGroupsFromPage();
+        };
+
+        runCollect();
+
+        openEndsGroupsRefreshInterval = setInterval(runCollect, 1000);
+        openEndsGroupsRefreshStopTimer = setTimeout(() => {
+            clearScheduledOpenEndsGroupsRefresh();
+        }, 7000);
+
+        if (!document.body || typeof MutationObserver !== "function") {
+            return;
+        }
+
+        openEndsGroupsRefreshObserver = new MutationObserver(() => {
+            if (openEndsGroupsRefreshDebounceTimer) {
+                clearTimeout(openEndsGroupsRefreshDebounceTimer);
+            }
+
+            openEndsGroupsRefreshDebounceTimer = setTimeout(() => {
+                openEndsGroupsRefreshDebounceTimer = null;
+                runCollect();
+            }, 250);
+        });
+
+        openEndsGroupsRefreshObserver.observe(document.body, {
+            childList: true,
+            subtree: true
+        });
+    }
+
     function emitProjectEditStatsDirty(storageKey) {
         const key = String(storageKey || "").trim();
         if (
@@ -73,12 +150,14 @@
 
     /** Собрать с текущей страницы (Project Edit #openEnds) список сгруппированных переменных из колонки «переменная» (Q1_1_other; Q1_2_other; …) и сохранить по projectId. */
     function collectOpenEndsGroupsFromPage() {
-        if (!isOpenEndsHash()) return;
+        if (!isOpenEndsHash()) return false;
         const projectId = getProjectIdFromEditPage();
-        if (!projectId) return;
+        if (!projectId) return false;
         const root = document.querySelector("#divOpenEnds");
-        if (!root) return;
-        const rows = root.querySelectorAll("#gridOpenEnds .k-grid-content tbody tr.k-master-row");
+        if (!root) return false;
+        const tbody = root.querySelector("#gridOpenEnds .k-grid-content tbody");
+        if (!tbody) return false;
+        const rows = tbody.querySelectorAll("tr.k-master-row");
         const variableSelector = state.settings.variableSelector || "td:nth-child(5)";
         const groupByCode = {};
         for (const row of rows) {
@@ -92,9 +171,18 @@
             }
         }
         const all = loadOpenEndsGroups();
-        all[projectId] = groupByCode;
-        saveOpenEndsGroups(all);
+        const previousGroups =
+            all[projectId] && typeof all[projectId] === "object" ? all[projectId] : {};
+        const previousSerialized = JSON.stringify(previousGroups);
+        const nextSerialized = JSON.stringify(groupByCode);
+
+        if (previousSerialized !== nextSerialized) {
+            all[projectId] = groupByCode;
+            saveOpenEndsGroups(all);
+        }
+
         ensureManualGroupButtonHooked();
+        return true;
     }
 
     function loadManualBfridsState() {

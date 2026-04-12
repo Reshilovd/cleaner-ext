@@ -1,5 +1,18 @@
 "use strict";
 
+    function getVerifyRespondentCandidatesTitle(respondentIds) {
+        const uniqueCount = Array.isArray(respondentIds)
+            ? new Set(
+                respondentIds
+                    .map((respondentId) => String(respondentId || "").trim())
+                    .filter(Boolean)
+            ).size
+            : 0;
+
+        const baseTitle = "Респонденты с данным ответом";
+        return uniqueCount > 1 ? `${baseTitle} (${uniqueCount})` : baseTitle;
+    }
+
     function showVerifyRespondentModal(respondentId, answers, context, rowState) {
         let modal = document.querySelector(".qga-verify-modal");
         if (!modal) {
@@ -234,7 +247,7 @@
         const listNode = modal.querySelector(".qga-verify-modal__list");
 
         if (titleNode) {
-            titleNode.textContent = "Респонденты с данным ответом";
+            titleNode.textContent = getVerifyRespondentCandidatesTitle(respondentIds);
         }
 
         if (listNode) {

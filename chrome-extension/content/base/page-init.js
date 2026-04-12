@@ -38,6 +38,11 @@
             setupManualPageIntegration();
             setupOpenEndsVerifyShortcut();
             const scheduleCollectGroups = () => {
+                if (typeof scheduleOpenEndsGroupsRefreshSync === "function") {
+                    scheduleOpenEndsGroupsRefreshSync();
+                    return;
+                }
+
                 if (isOpenEndsHash()) {
                     setTimeout(collectOpenEndsGroupsFromPage, 500);
                 }
@@ -47,6 +52,9 @@
             window.addEventListener("hashchange", () => {
                 setupOpenEndsVerifyShortcut();
                 if (!isOpenEndsHash() && state.panel) {
+                    if (typeof clearScheduledOpenEndsGroupsRefresh === "function") {
+                        clearScheduledOpenEndsGroupsRefresh();
+                    }
                     hidePanel();
                 } else {
                     scheduleCollectGroups();
