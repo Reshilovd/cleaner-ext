@@ -34,6 +34,9 @@ var MANUAL_API_STATE_STORAGE_KEY = "__qga_manual_api_state_v1__";
 var RATING_INCORRECT_IDS_STORAGE_KEY = "__qga_rating_incorrect_ids_v1__";
 var VERIFY_INCORRECT_IDS_STORAGE_KEY = "__qga_verify_incorrect_ids_v1__";
 var OPENENDS_GROUPS_STORAGE_KEY = "__qga_openends_groups_v1__";
+var PROJECT_EDIT_STATS_DIRTY_EVENT_NAME = "qga:project-edit-stats-dirty";
+var RATING_INCORRECT_IDS_META_KEY = "__qga_meta__";
+var PROJECT_EDIT_STATS_RATING_TTL_MS = 5 * 60 * 1000;
 var CLEANER_PROJECTS_FAVORITES_STORAGE_KEY = "__qga_cleaner_projects_favorites_v1__";
 var CLEANER_PROJECTS_FAVORITES_ONLY_STORAGE_KEY = "__qga_cleaner_projects_favorites_only_v1__";
 

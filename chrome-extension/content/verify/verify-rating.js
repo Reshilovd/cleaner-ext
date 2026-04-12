@@ -410,6 +410,58 @@
         return data;
     }
 
+    function getRatingIncorrectIdsMetaState(createIfMissing) {
+        if (
+            !ratingIncorrectIdsState ||
+            typeof ratingIncorrectIdsState !== "object" ||
+            Array.isArray(ratingIncorrectIdsState)
+        ) {
+            if (!createIfMissing) {
+                return null;
+            }
+            ratingIncorrectIdsState = {};
+        }
+
+        const metaState = ratingIncorrectIdsState[RATING_INCORRECT_IDS_META_KEY];
+        if (metaState && typeof metaState === "object" && !Array.isArray(metaState)) {
+            return metaState;
+        }
+
+        if (!createIfMissing) {
+            return null;
+        }
+
+        ratingIncorrectIdsState[RATING_INCORRECT_IDS_META_KEY] = {};
+        return ratingIncorrectIdsState[RATING_INCORRECT_IDS_META_KEY];
+    }
+
+    function getRatingIncorrectIdsUpdatedAt(projectId) {
+        const key = String(projectId || "").trim();
+        if (!key) {
+            return 0;
+        }
+
+        const metaState = getRatingIncorrectIdsMetaState(false);
+        if (!metaState) {
+            return 0;
+        }
+
+        const updatedAt = Number(metaState[key]);
+        return Number.isFinite(updatedAt) && updatedAt > 0 ? updatedAt : 0;
+    }
+
+    function setRatingIncorrectIdsUpdatedAt(projectId, timestampMs) {
+        const key = String(projectId || "").trim();
+        if (!key) {
+            return 0;
+        }
+
+        const metaState = getRatingIncorrectIdsMetaState(true);
+        const updatedAt = Number.isFinite(timestampMs) && timestampMs > 0 ? Math.floor(timestampMs) : Date.now();
+        metaState[key] = updatedAt;
+        return updatedAt;
+    }
+
     var REASON_CODE_PRIORITY = typeof REASON_CODE_PRIORITY !== "undefined" && REASON_CODE_PRIORITY ? REASON_CODE_PRIORITY : [1, 6, 3, 4, 2];
 
     var REASON_CODE_ROW_CLASS = typeof REASON_CODE_ROW_CLASS !== "undefined" && REASON_CODE_ROW_CLASS ? REASON_CODE_ROW_CLASS : {
@@ -498,6 +550,7 @@
                 return false;
             }
             ratingIncorrectIdsState[key] = parsed.tokenReasonCodes || {};
+            setRatingIncorrectIdsUpdatedAt(key, Date.now());
             saveRatingIncorrectIdsState(ratingIncorrectIdsState);
             const count = Object.keys(parsed.tokenReasonCodes || {}).length;
             console.info("[QGA] Рейтинг: загружены ID с ReasonCodes, кол-во:", count);

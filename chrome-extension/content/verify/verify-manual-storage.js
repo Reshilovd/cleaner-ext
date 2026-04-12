@@ -51,6 +51,26 @@
         } catch (e) {}
     }
 
+    function emitProjectEditStatsDirty(storageKey) {
+        const key = String(storageKey || "").trim();
+        if (
+            !key ||
+            typeof window === "undefined" ||
+            typeof window.dispatchEvent !== "function" ||
+            typeof CustomEvent !== "function"
+        ) {
+            return;
+        }
+
+        try {
+            window.dispatchEvent(
+                new CustomEvent(PROJECT_EDIT_STATS_DIRTY_EVENT_NAME, {
+                    detail: { storageKey: key }
+                })
+            );
+        } catch (error) {}
+    }
+
     /** Собрать с текущей страницы (Project Edit #openEnds) список сгруппированных переменных из колонки «переменная» (Q1_1_other; Q1_2_other; …) и сохранить по projectId. */
     function collectOpenEndsGroupsFromPage() {
         if (!isOpenEndsHash()) return;
@@ -95,8 +115,12 @@
     }
 
     function saveManualBfridsState(stateObject) {
+        const normalizedState =
+            stateObject && typeof stateObject === "object" && !Array.isArray(stateObject) ? stateObject : {};
+        manualBfridsState = normalizedState;
         try {
-            localStorage.setItem(MANUAL_BFRIDS_STORAGE_KEY, JSON.stringify(stateObject || {}));
+            localStorage.setItem(MANUAL_BFRIDS_STORAGE_KEY, JSON.stringify(normalizedState));
+            emitProjectEditStatsDirty(MANUAL_BFRIDS_STORAGE_KEY);
         } catch (error) {
             console.warn("[QGA] Не удалось сохранить состояние bfrid для ручной чистки в localStorage:", error);
         }
@@ -120,8 +144,12 @@
     }
 
     function saveManualApiState(stateObject) {
+        const normalizedState =
+            stateObject && typeof stateObject === "object" && !Array.isArray(stateObject) ? stateObject : {};
+        manualApiState = normalizedState;
         try {
-            localStorage.setItem(MANUAL_API_STATE_STORAGE_KEY, JSON.stringify(stateObject || {}));
+            localStorage.setItem(MANUAL_API_STATE_STORAGE_KEY, JSON.stringify(normalizedState));
+            emitProjectEditStatsDirty(MANUAL_API_STATE_STORAGE_KEY);
         } catch (error) {
             console.warn("[QGA] Не удалось сохранить состояние API ручной чистки в localStorage:", error);
         }
@@ -140,8 +168,12 @@
     }
 
     function saveRatingIncorrectIdsState(stateObject) {
+        const normalizedState =
+            stateObject && typeof stateObject === "object" && !Array.isArray(stateObject) ? stateObject : {};
+        ratingIncorrectIdsState = normalizedState;
         try {
-            localStorage.setItem(RATING_INCORRECT_IDS_STORAGE_KEY, JSON.stringify(stateObject || {}));
+            localStorage.setItem(RATING_INCORRECT_IDS_STORAGE_KEY, JSON.stringify(normalizedState));
+            emitProjectEditStatsDirty(RATING_INCORRECT_IDS_STORAGE_KEY);
         } catch (error) {
             console.warn("[QGA] Не удалось сохранить рейтинг некорректных ID в localStorage:", error);
         }
@@ -160,8 +192,12 @@
     }
 
     function saveVerifyIncorrectIdsState(stateObject) {
+        const normalizedState =
+            stateObject && typeof stateObject === "object" && !Array.isArray(stateObject) ? stateObject : {};
+        verifyIncorrectIdsState = normalizedState;
         try {
-            localStorage.setItem(VERIFY_INCORRECT_IDS_STORAGE_KEY, JSON.stringify(stateObject || {}));
+            localStorage.setItem(VERIFY_INCORRECT_IDS_STORAGE_KEY, JSON.stringify(normalizedState));
+            emitProjectEditStatsDirty(VERIFY_INCORRECT_IDS_STORAGE_KEY);
         } catch (error) {
             console.warn("[QGA] Не удалось сохранить локальные некорректные ID в localStorage:", error);
         }

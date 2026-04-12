@@ -58,9 +58,15 @@ var projectEditStatsRatingPendingProjects =
     projectEditStatsRatingPendingProjects instanceof Set
         ? projectEditStatsRatingPendingProjects
         : new Set();
+var PROJECT_EDIT_STATS_RELEVANT_STORAGE_KEYS =
+    typeof PROJECT_EDIT_STATS_RELEVANT_STORAGE_KEYS !== "undefined" &&
+    PROJECT_EDIT_STATS_RELEVANT_STORAGE_KEYS instanceof Set
+        ? PROJECT_EDIT_STATS_RELEVANT_STORAGE_KEYS
+        : new Set([VERIFY_INCORRECT_IDS_STORAGE_KEY, RATING_INCORRECT_IDS_STORAGE_KEY]);
 
 function setupProjectEditStatsWidget() {
     ensureProjectEditStatsObserver();
+    refreshProjectEditStatsRatingDataIfStale();
     scheduleProjectEditStatsSync(0);
 }
 
@@ -93,6 +99,63 @@ function ensureProjectEditStatsObserver() {
     window.addEventListener("hashchange", () => {
         scheduleProjectEditStatsSync(0);
     });
+    window.addEventListener(PROJECT_EDIT_STATS_DIRTY_EVENT_NAME, handleProjectEditStatsDirtyEvent);
+    window.addEventListener("storage", handleProjectEditStatsStorageChange);
+    window.addEventListener("focus", handleProjectEditStatsResume);
+    document.addEventListener("visibilitychange", handleProjectEditStatsResume);
+}
+
+function handleProjectEditStatsDirtyEvent(event) {
+    const storageKey =
+        event && event.detail && typeof event.detail.storageKey === "string"
+            ? event.detail.storageKey
+            : "";
+
+    if (storageKey && !PROJECT_EDIT_STATS_RELEVANT_STORAGE_KEYS.has(storageKey)) {
+        return;
+    }
+
+    scheduleProjectEditStatsSync(0);
+}
+
+function handleProjectEditStatsStorageChange(event) {
+    if (!event || event.storageArea !== localStorage) {
+        return;
+    }
+
+    const storageKey = typeof event.key === "string" ? event.key : "";
+    if (!PROJECT_EDIT_STATS_RELEVANT_STORAGE_KEYS.has(storageKey)) {
+        return;
+    }
+
+    reloadProjectEditStatsStateFromStorage(storageKey);
+    scheduleProjectEditStatsSync(0);
+}
+
+function handleProjectEditStatsResume() {
+    if (document.visibilityState === "hidden" || !isProjectEditStatsHashAllowed()) {
+        return;
+    }
+
+    refreshProjectEditStatsRatingDataIfStale();
+    scheduleProjectEditStatsSync(0);
+}
+
+function reloadProjectEditStatsStateFromStorage(storageKey) {
+    switch (storageKey) {
+        case VERIFY_INCORRECT_IDS_STORAGE_KEY:
+            if (typeof loadVerifyIncorrectIdsState === "function") {
+                verifyIncorrectIdsState = loadVerifyIncorrectIdsState();
+            }
+            break;
+        case RATING_INCORRECT_IDS_STORAGE_KEY:
+            if (typeof loadRatingIncorrectIdsState === "function") {
+                ratingIncorrectIdsState = loadRatingIncorrectIdsState();
+            }
+            break;
+        default:
+            break;
+    }
 }
 
 function isProjectEditStatsOwnedElement(element) {
@@ -533,13 +596,24 @@ function hasProjectEditStatsRatingData(projectId) {
 
 function ensureProjectEditStatsRatingData(projectId) {
     const key = String(projectId || "").trim();
+    const force = !!(arguments[1] && arguments[1].force);
     if (
         !key ||
-        hasProjectEditStatsRatingData(key) ||
-        projectEditStatsRatingRequestedProjects.has(key) ||
         typeof ensureRatingIncorrectIdsLoaded !== "function"
     ) {
         return;
+    }
+
+    if (!force && (hasProjectEditStatsRatingData(key) || projectEditStatsRatingRequestedProjects.has(key))) {
+        return;
+    }
+
+    if (projectEditStatsRatingPendingProjects.has(key)) {
+        return;
+    }
+
+    if (force) {
+        projectEditStatsRatingRequestedProjects.delete(key);
     }
 
     projectEditStatsRatingRequestedProjects.add(key);
@@ -551,6 +625,46 @@ function ensureProjectEditStatsRatingData(projectId) {
             projectEditStatsRatingPendingProjects.delete(key);
             scheduleProjectEditStatsSync(0);
         });
+}
+
+function getProjectEditStatsRatingUpdatedAt(projectId) {
+    if (typeof getRatingIncorrectIdsUpdatedAt !== "function") {
+        return 0;
+    }
+
+    return getRatingIncorrectIdsUpdatedAt(projectId);
+}
+
+function isProjectEditStatsRatingExpired(projectId) {
+    const updatedAt = getProjectEditStatsRatingUpdatedAt(projectId);
+    if (!updatedAt) {
+        return true;
+    }
+
+    return Date.now() - updatedAt >= PROJECT_EDIT_STATS_RATING_TTL_MS;
+}
+
+function refreshProjectEditStatsRatingDataIfStale() {
+    if (!isProjectEditStatsHashAllowed()) {
+        return false;
+    }
+
+    const projectId = getProjectEditStatsProjectId();
+    if (!projectId) {
+        return false;
+    }
+
+    if (!hasProjectEditStatsRatingData(projectId)) {
+        ensureProjectEditStatsRatingData(projectId);
+        return true;
+    }
+
+    if (projectEditStatsRatingPendingProjects.has(projectId) || !isProjectEditStatsRatingExpired(projectId)) {
+        return false;
+    }
+
+    ensureProjectEditStatsRatingData(projectId, { force: true });
+    return true;
 }
 
 function getProjectEditStatsBreakdownCounts(projectId) {
