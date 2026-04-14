@@ -388,8 +388,15 @@
                 manualRow.style.display = "flex";
                 manualRow.style.alignItems = "center";
                 manualRow.style.gap = "6px";
-                manualRow.appendChild(manualCheckbox);
-                manualRow.appendChild(document.createTextNode("В ручную чистку"));
+                const manualLabel = document.createElement("label");
+                manualLabel.className = "qga-verify-modal__footer-label";
+                manualLabel.style.display = "inline-flex";
+                manualLabel.style.alignItems = "center";
+                manualLabel.style.gap = "6px";
+                manualLabel.style.cursor = manualCheckbox.disabled ? "default" : "pointer";
+                manualLabel.appendChild(manualCheckbox);
+                manualLabel.appendChild(document.createTextNode("В ручную чистку"));
+                manualRow.appendChild(manualLabel);
                 headerItem.appendChild(manualRow);
 
                 fragment.appendChild(headerItem);

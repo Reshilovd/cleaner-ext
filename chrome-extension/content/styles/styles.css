@@ -375,6 +375,8 @@
                 cursor: pointer;
                 font-size: 12px;
                 color: #374151;
+                user-select: none;
+                -webkit-user-select: none;
             }
             .qga-verify-modal--tech-defect .qga-verify-modal__body,
             .qga-verify-modal--tech-defect .qga-verify-modal__footer {

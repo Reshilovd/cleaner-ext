@@ -863,6 +863,10 @@ var projectEditPenaltyToggleState =
     typeof projectEditPenaltyToggleState !== "undefined" && projectEditPenaltyToggleState instanceof Map
         ? projectEditPenaltyToggleState
         : new Map();
+var projectEditPenaltySuppressedDuringBulk =
+    typeof projectEditPenaltySuppressedDuringBulk !== "undefined"
+        ? projectEditPenaltySuppressedDuringBulk
+        : false;
 
 function isProjectEditPenaltyHashAllowed() {
     const hash = String(window.location.hash || "").trim().toLowerCase();
@@ -884,6 +888,10 @@ function isProjectEditPenaltyHashAllowed() {
 function getProjectEditPenaltyGridRoot() {
     const gridRoot = document.querySelector(PROJECT_EDIT_PENALTY_GRID_SELECTOR);
     return gridRoot instanceof HTMLElement ? gridRoot : null;
+}
+
+function isProjectEditPenaltyBulkGroupingActive() {
+    return !!(typeof state !== "undefined" && state && state.bulkRunning === true);
 }
 
 function getProjectEditPenaltyHeaderRow(gridRoot) {
@@ -1645,6 +1653,18 @@ function buildProjectEditPenaltyItemKey(dataItem, row) {
 }
 
 function syncProjectEditPenaltyToggle() {
+    if (isProjectEditPenaltyBulkGroupingActive()) {
+        if (!projectEditPenaltySuppressedDuringBulk) {
+            removeProjectEditPenaltyColumn();
+            projectEditPenaltySuppressedDuringBulk = true;
+        }
+        return;
+    }
+
+    if (projectEditPenaltySuppressedDuringBulk) {
+        projectEditPenaltySuppressedDuringBulk = false;
+    }
+
     if (!isProjectEditPenaltyHashAllowed()) {
         removeProjectEditPenaltyColumn();
         return;

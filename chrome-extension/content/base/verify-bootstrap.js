@@ -153,30 +153,45 @@
         counter.style.display = "none";
         counter.style.alignItems = "center";
         counter.style.marginLeft = "8px";
-        counter.style.padding = "2px 8px";
+        counter.style.padding = "4px 8px";
         counter.style.borderRadius = "999px";
         counter.style.border = "1px solid #d1d5db";
         counter.style.background = "#f8fafc";
         counter.style.color = "#475569";
         counter.style.fontSize = "12px";
-        counter.style.lineHeight = "1.4";
+        counter.style.lineHeight = "1";
         counter.style.verticalAlign = "middle";
         counter.style.whiteSpace = "nowrap";
         counter.style.userSelect = "none";
 
         const counterLabel = document.createElement("span");
         counterLabel.className = "qga-verify-manual-counter__label";
+        counterLabel.style.display = "inline-flex";
+        counterLabel.style.alignItems = "center";
+        counterLabel.style.lineHeight = "1";
 
         const counterClear = document.createElement("span");
         counterClear.className = "qga-verify-manual-counter__clear";
-        counterClear.textContent = "x";
+        counterClear.textContent = "✕";
         counterClear.setAttribute("aria-hidden", "true");
-        counterClear.style.display = "none";
-        counterClear.style.marginLeft = "6px";
+        counterClear.style.display = "inline-flex";
+        counterClear.style.marginLeft = "0";
         counterClear.style.color = "#dc2626";
-        counterClear.style.fontSize = "13px";
+        counterClear.style.fontSize = "11px";
         counterClear.style.fontWeight = "700";
         counterClear.style.lineHeight = "1";
+        counterClear.style.width = "0";
+        counterClear.style.height = "14px";
+        counterClear.style.overflow = "hidden";
+        counterClear.style.borderRadius = "999px";
+        counterClear.style.border = "none";
+        counterClear.style.background = "#fff1f2";
+        counterClear.style.alignItems = "center";
+        counterClear.style.justifyContent = "center";
+        counterClear.style.opacity = "0";
+        counterClear.style.transform = "translateX(-6px)";
+        counterClear.style.transition = "opacity 220ms ease, transform 280ms ease, width 280ms ease, margin-left 280ms ease";
+        counterClear.style.pointerEvents = "none";
 
         counter.appendChild(counterLabel);
         counter.appendChild(counterClear);
@@ -262,7 +277,12 @@
             label.textContent = `В ручную: ${count}`;
         }
         if (clear) {
-            clear.style.display = count > 0 && isHover ? "inline-block" : "none";
+            const showClear = count > 0 && isHover;
+            clear.style.opacity = showClear ? "1" : "0";
+            clear.style.transform = showClear ? "translateX(0)" : "translateX(-6px)";
+            clear.style.width = showClear ? "14px" : "0";
+            clear.style.marginLeft = showClear ? "6px" : "0";
+            clear.style.pointerEvents = showClear ? "auto" : "none";
         }
         counter.title = count > 0
             ? isHover
