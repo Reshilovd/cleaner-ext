@@ -385,7 +385,6 @@
                 manualRow.className = "qga-verify-modal__manual-row";
                 manualRow.style.marginTop = "8px";
                 manualRow.style.paddingTop = "8px";
-                manualRow.style.borderTop = "1px solid #e5e7eb";
                 manualRow.style.display = "flex";
                 manualRow.style.alignItems = "center";
                 manualRow.style.gap = "6px";

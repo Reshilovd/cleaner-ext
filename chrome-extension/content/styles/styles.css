@@ -254,7 +254,7 @@
                 gap: 6px;
             }
             .qga-verify-modal__title {
-                font-size: 12px;
+                font-size: 14px;
                 font-weight: 600;
             }
             .qga-verify-modal__close {
@@ -339,7 +339,7 @@
                 z-index: 1;
                 background: #fff;
                 font-weight: 600;
-                font-size: 14px;
+                font-size: 15px;
                 margin-bottom: 3px;
                 padding: 2px 0;
                 color: #111827;
@@ -366,7 +366,7 @@
             .qga-verify-modal__footer {
                 margin-top: 10px;
                 padding-top: 10px;
-                border-top: 1px solid #e5e7eb;
+                border-top: none;
             }
             .qga-verify-modal__footer-label {
                 display: inline-flex;
