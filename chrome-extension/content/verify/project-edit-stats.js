@@ -44,7 +44,7 @@ var PROJECT_EDIT_STATS_BREAKDOWN_DANGER_CLASS =
 var PROJECT_EDIT_STATS_ALERT_THRESHOLD =
     typeof PROJECT_EDIT_STATS_ALERT_THRESHOLD !== "undefined"
         ? PROJECT_EDIT_STATS_ALERT_THRESHOLD
-        : 4;
+        : 5;
 
 var projectEditStatsSyncTimer =
     typeof projectEditStatsSyncTimer !== "undefined" ? projectEditStatsSyncTimer : null;
