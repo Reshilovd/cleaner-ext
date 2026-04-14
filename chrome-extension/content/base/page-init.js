@@ -22,7 +22,19 @@
     }
 
     function isOpenEndsHash() {
-        return (window.location.hash || "").toLowerCase() === "#openends";
+        const hash = String(window.location.hash || "").trim().toLowerCase();
+        if (hash === "#openends") {
+            return true;
+        }
+
+        // После некоторых действий на странице hash может временно сбрасываться,
+        // хотя пользователь остаётся на вкладке OpenEnds.
+        if (!hash) {
+            const openEndsRoot = document.querySelector("#divOpenEnds, #gridOpenEnds");
+            return openEndsRoot instanceof HTMLElement;
+        }
+
+        return false;
     }
 
     function initOpenEndsMode() {

@@ -216,7 +216,18 @@ function scheduleProjectEditStatsSync(delayMs) {
 
 function isProjectEditStatsHashAllowed() {
     const hash = String(window.location.hash || "").trim().toLowerCase();
-    return PROJECT_EDIT_STATS_ALLOWED_HASHES.has(hash);
+    if (PROJECT_EDIT_STATS_ALLOWED_HASHES.has(hash)) {
+        return true;
+    }
+
+    // После некоторых действий (например, pasteBrandTags) хэш может временно очищаться.
+    // Если при этом на странице виден блок статистики проекта, оставляем виджет активным.
+    if (!hash) {
+        const statsRoot = document.getElementById("divStats");
+        return statsRoot instanceof HTMLElement;
+    }
+
+    return false;
 }
 
 function getProjectEditStatsBinding() {
@@ -854,7 +865,20 @@ var projectEditPenaltyToggleState =
         : new Map();
 
 function isProjectEditPenaltyHashAllowed() {
-    return String(window.location.hash || "").trim().toLowerCase() === PROJECT_EDIT_PENALTY_ALLOWED_HASH;
+    const hash = String(window.location.hash || "").trim().toLowerCase();
+    if (hash === PROJECT_EDIT_PENALTY_ALLOWED_HASH) {
+        return true;
+    }
+
+    // После некоторых операций (например, pasteBrandTags) hash может временно очищаться,
+    // хотя пользователь остаётся в контексте OpenEnds. В таком случае разрешаем sync
+    // по факту наличия грида OpenEnds на странице.
+    if (!hash) {
+        const openEndsGrid = document.querySelector(PROJECT_EDIT_PENALTY_GRID_SELECTOR);
+        return openEndsGrid instanceof HTMLElement;
+    }
+
+    return false;
 }
 
 function getProjectEditPenaltyGridRoot() {
@@ -867,7 +891,9 @@ function getProjectEditPenaltyHeaderRow(gridRoot) {
         return null;
     }
 
-    const row = gridRoot.querySelector(".k-grid-header thead tr[role='row']");
+    const row =
+        gridRoot.querySelector(".k-grid-header thead tr[role='row']") ||
+        gridRoot.querySelector(".k-grid-header thead tr");
     return row instanceof HTMLTableRowElement ? row : null;
 }
 
@@ -876,21 +902,38 @@ function findProjectEditPenaltyReferenceHeader(headerRow) {
         return null;
     }
 
-    const byField = headerRow.querySelector(
-        `th[role='columnheader'][data-field='${PROJECT_EDIT_PENALTY_REFERENCE_FIELD}']`
-    );
+    const byField =
+        headerRow.querySelector(`th[role='columnheader'][data-field='${PROJECT_EDIT_PENALTY_REFERENCE_FIELD}']`) ||
+        headerRow.querySelector(`th[data-field='${PROJECT_EDIT_PENALTY_REFERENCE_FIELD}']`);
     if (byField instanceof HTMLTableCellElement) {
         return byField;
     }
 
-    const fallbackCells = Array.from(headerRow.querySelectorAll("th[role='columnheader']")).filter(
+    const fallbackCells = Array.from(headerRow.querySelectorAll("th")).filter(
         (cell) => !cell.classList.contains(PROJECT_EDIT_PENALTY_HEADER_CLASS)
     );
 
+    const byFieldName = fallbackCells.find((cell) => {
+        const fieldName = normalizeProjectEditPenaltyText(cell.getAttribute("data-field"));
+        return fieldName === normalizeProjectEditPenaltyText(PROJECT_EDIT_PENALTY_REFERENCE_FIELD);
+    });
+    if (byFieldName) {
+        return byFieldName;
+    }
+
+    const headerTitleAliases = [
+        "авто проверка",
+        "автопроверка",
+        "auto check",
+        "autocheck"
+    ];
     return (
         fallbackCells.find((cell) => {
-            const fieldName = normalizeProjectEditPenaltyText(cell.getAttribute("data-field"));
-            return fieldName === normalizeProjectEditPenaltyText(PROJECT_EDIT_PENALTY_REFERENCE_FIELD);
+            const text = normalizeProjectEditPenaltyText(cell.textContent || "");
+            if (!text) {
+                return false;
+            }
+            return headerTitleAliases.some((alias) => text.includes(alias));
         }) || null
     );
 }
@@ -1335,8 +1378,17 @@ function ensureProjectEditPenaltyGridHooks(grid) {
         grid.bind("dataBound", () => {
             applyProjectEditPenaltyStateToDataItems(grid);
             ensureProjectEditPenaltySwitches(grid);
+            scheduleProjectEditPenaltyToggleSync(0);
         });
     }
+}
+
+function ensureProjectEditPenaltyKendoHooks(gridRoot) {
+    const grid = getProjectEditPenaltyGrid(gridRoot);
+    if (!grid) {
+        return;
+    }
+    ensureProjectEditPenaltyGridHooks(grid);
 }
 
 function ensureProjectEditPenaltyColumn(grid) {
@@ -1349,16 +1401,28 @@ function ensureProjectEditPenaltyColumn(grid) {
         return false;
     }
 
-    const referenceIndex = columns.findIndex((column) => {
+    let referenceIndex = columns.findIndex((column) => {
         return normalizeProjectEditPenaltyText(column && column.field) === normalizeProjectEditPenaltyText(PROJECT_EDIT_PENALTY_REFERENCE_FIELD);
     });
 
-    if (referenceIndex < 0 || typeof grid.setOptions !== "function") {
+    if (referenceIndex < 0) {
+        const titleAliases = ["авто проверка", "авт. проверка", "автопроверка", "auto check", "autocheck"];
+        referenceIndex = columns.findIndex((column) => {
+            const title = normalizeProjectEditPenaltyText(column && column.title);
+            if (!title) {
+                return false;
+            }
+            return titleAliases.some((alias) => title.includes(alias));
+        });
+    }
+
+    if (typeof grid.setOptions !== "function") {
         return false;
     }
 
     const nextColumns = columns.slice();
-    nextColumns.splice(referenceIndex + 1, 0, buildProjectEditPenaltyColumnDefinition());
+    const insertionIndex = referenceIndex >= 0 ? referenceIndex + 1 : nextColumns.length;
+    nextColumns.splice(insertionIndex, 0, buildProjectEditPenaltyColumnDefinition());
     grid.setOptions({ columns: nextColumns });
 
     return true;
@@ -1587,8 +1651,25 @@ function syncProjectEditPenaltyToggle() {
     }
 
     const gridRoot = getProjectEditPenaltyGridRoot();
+    if (!(gridRoot instanceof HTMLElement)) {
+        return;
+    }
+    ensureProjectEditPenaltyKendoHooks(gridRoot);
+    const kendoGrid = getProjectEditPenaltyGrid(gridRoot);
+    if (kendoGrid) {
+        ensureProjectEditPenaltyGridHooks(kendoGrid);
+        const columnAddedViaKendo = ensureProjectEditPenaltyColumn(kendoGrid);
+        if (columnAddedViaKendo) {
+            // После setOptions Kendo перерисует таблицу; повторный sync выполнится через dataBound-хук.
+            scheduleProjectEditPenaltyToggleSync(0);
+            return;
+        }
+    }
     if (hasProjectEditPenaltyActiveEditRow(gridRoot)) {
-        removeProjectEditPenaltyColumn();
+        // Во время inline-edit Kendo может держать edit-row дольше обычного.
+        // Не удаляем Penalty-колонку, чтобы она не пропадала после асинхронных операций
+        // вроде "Копировать теги". Просто откладываем синхронизацию.
+        scheduleProjectEditPenaltyToggleSync(250);
         return;
     }
 
@@ -2476,6 +2557,8 @@ function getProjectEditPenaltyFieldIndex(gridRoot, fieldName) {
         return -1;
     }
 
-    const header = headerRow.querySelector(`th[role='columnheader'][data-field='${fieldName}']`);
+    const header =
+        headerRow.querySelector(`th[role='columnheader'][data-field='${fieldName}']`) ||
+        headerRow.querySelector(`th[data-field='${fieldName}']`);
     return header instanceof HTMLTableCellElement && Number.isFinite(header.cellIndex) ? header.cellIndex : -1;
 }

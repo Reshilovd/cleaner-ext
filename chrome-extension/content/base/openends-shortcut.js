@@ -40,7 +40,6 @@
             }
             return;
         }
-
         const button = existingButton || buildOpenEndsVerifyShortcutButton(pasteButton);
         if (!button) {
             return;
