@@ -736,4 +736,18 @@
                 opacity: 0.58;
                 cursor: wait;
             }
-        
+
+            /* Увеличиваем поле и выпадающий список для тегов брендов в OpenEnds. */
+            #gridOpenEnds th[data-field='BrandTags'],
+            #gridOpenEnds td[data-field='BrandTags'] {
+                width: 320px !important;
+                min-width: 320px !important;
+            }
+            #gridOpenEnds td[data-field='BrandTags'] .k-multiselect {
+                width: 100% !important;
+                min-width: 300px !important;
+            }
+            .k-animation-container .k-list-container[id*='BrandTags'],
+            .k-animation-container [id*='BrandTags_listbox'] {
+                min-width: 500px !important;
+            }
