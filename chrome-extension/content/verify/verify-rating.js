@@ -257,6 +257,10 @@
             return result;
         }
 
+    if (result.ok !== true) {
+        return result;
+    }
+
         return {
             ok: true,
             respondentIdsByOpenEndId: new Map(result.respondentIdsByOpenEndIdEntries || []),
@@ -523,6 +527,41 @@
         return [...new Set(codes)];
     }
 
+    function buildRatingFetchDiagnostics(error, context) {
+        const err = error && typeof error === "object" ? error : null;
+        const name = err && typeof err.name === "string" ? err.name : typeof error;
+        const message = err && typeof err.message === "string" ? err.message : String(error || "");
+        const stack = err && typeof err.stack === "string" ? err.stack : "";
+        const isOffline = typeof navigator !== "undefined" && navigator && navigator.onLine === false;
+        const isAbort = name === "AbortError";
+        const isTimeout = context && context.timeoutTriggered === true;
+        const isFetchFailure = /failed to fetch/i.test(message);
+
+        let reason = "unknown";
+        if (isOffline) {
+            reason = "offline";
+        } else if (isTimeout || isAbort) {
+            reason = "timeout_or_abort";
+        } else if (isFetchFailure) {
+            reason = "network_or_cors_or_redirect";
+        }
+
+        return {
+            reason,
+            name,
+            message,
+            stack,
+            isOffline,
+            isAbort,
+            isTimeout,
+            isFetchFailure,
+            requestUrl: context && context.requestUrl ? context.requestUrl : "",
+            referrerUrl: context && context.referrerUrl ? context.referrerUrl : "",
+            locationHref: typeof window !== "undefined" && window.location ? String(window.location.href || "") : "",
+            userAgent: typeof navigator !== "undefined" && navigator ? String(navigator.userAgent || "") : ""
+        };
+    }
+
     /** Загружает Excel рейтинга по projectId (URL: /lk/Project/Ratings/{id}), парсит все ReasonCodes. */
     async function ensureRatingIncorrectIdsLoaded(projectId) {
         if (!projectId) return false;
@@ -530,17 +569,40 @@
         const url = `/lk/Project/Ratings/${encodeURIComponent(key)}`;
         const referrerUrl = `${window.location.origin}/lk/Project/Edit/${encodeURIComponent(key)}`;
         const acceptHeader = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7";
+        const requestUrl = new URL(url, window.location.origin).toString();
+        const timeoutMs = 25000;
+        const abortController = typeof AbortController === "function" ? new AbortController() : null;
+        let timeoutTriggered = false;
+        let timeoutId = null;
+        if (abortController) {
+            timeoutId = setTimeout(() => {
+                timeoutTriggered = true;
+                abortController.abort();
+            }, timeoutMs);
+        }
+
         try {
             const response = await fetch(url, {
                 credentials: "include",
                 referrer: referrerUrl,
                 referrerPolicy: "unsafe-url",
+                signal: abortController ? abortController.signal : undefined,
                 headers: {
                     Accept: acceptHeader
                 }
             });
+            if (timeoutId) {
+                clearTimeout(timeoutId);
+                timeoutId = null;
+            }
             if (!response.ok) {
-                console.warn("[QGA] Рейтинг: ответ сервера", response.status, response.statusText);
+                console.warn("[QGA] Рейтинг: ответ сервера", {
+                    status: response.status,
+                    statusText: response.statusText,
+                    requestUrl,
+                    finalUrl: response.url || "",
+                    redirected: response.redirected === true
+                });
                 return false;
             }
             const buffer = await response.arrayBuffer();
@@ -556,7 +618,16 @@
             console.info("[QGA] Рейтинг: загружены ID с ReasonCodes, кол-во:", count);
             return true;
         } catch (e) {
-            console.warn("[QGA] Рейтинг: ошибка загрузки", e);
+            if (timeoutId) {
+                clearTimeout(timeoutId);
+                timeoutId = null;
+            }
+            const diagnostics = buildRatingFetchDiagnostics(e, {
+                timeoutTriggered,
+                requestUrl,
+                referrerUrl
+            });
+            console.warn("[QGA] Рейтинг: ошибка загрузки", diagnostics);
             return false;
         }
     }

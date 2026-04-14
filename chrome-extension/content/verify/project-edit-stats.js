@@ -1758,11 +1758,14 @@ function toggleProjectEditPenaltySwitchInput(switchNode) {
 
     const previousChecked = getProjectEditPenaltySwitchChecked(switchNode);
     const previousAutoCheckText = getProjectEditPenaltyAutoCheckCellDisplayText(row);
+    const previousAutoCheckData = [];
+    const previousAutoCheckString = previousAutoCheckText;
+    const nextChecked = !previousChecked;
+    const nextAutoCheckData = buildProjectEditPenaltyNextAutoCheckData(previousAutoCheckData, nextChecked);
+    const nextAutoCheckString = buildProjectEditPenaltyRequestAutoCheckString(nextAutoCheckData);
     const bridgeRequest = requestProjectEditPenaltyBridgeToggle(row, !previousChecked);
 
     if (bridgeRequest) {
-        const nextChecked = !previousChecked;
-
         projectEditPenaltyToggleState.set(rowKey, nextChecked);
         syncProjectEditPenaltySwitchNode(switchNode, nextChecked);
         setProjectEditPenaltyRowBusyState(rowKey, true);
@@ -1807,20 +1810,19 @@ function toggleProjectEditPenaltySwitchInput(switchNode) {
         return;
     }
 
-    const previousAutoCheckData = getProjectEditPenaltyAutoCheckEntries(dataItem);
-    const previousAutoCheckString = getProjectEditPenaltyAutoCheckStringValue(dataItem);
-    const nextChecked = !previousChecked;
-    const nextAutoCheckData = buildProjectEditPenaltyNextAutoCheckData(previousAutoCheckData, nextChecked);
-    const nextAutoCheckString = buildProjectEditPenaltyRequestAutoCheckString(nextAutoCheckData);
+    const previousAutoCheckDataFromItem = getProjectEditPenaltyAutoCheckEntries(dataItem);
+    const previousAutoCheckStringFromItem = getProjectEditPenaltyAutoCheckStringValue(dataItem);
+    const nextAutoCheckDataFromItem = buildProjectEditPenaltyNextAutoCheckData(previousAutoCheckDataFromItem, nextChecked);
+    const nextAutoCheckStringFromItem = buildProjectEditPenaltyRequestAutoCheckString(nextAutoCheckDataFromItem);
 
     projectEditPenaltyToggleState.set(rowKey, nextChecked);
-    applyProjectEditPenaltyDataItemState(dataItem, nextAutoCheckData, nextAutoCheckString, nextChecked);
+    applyProjectEditPenaltyDataItemState(dataItem, nextAutoCheckDataFromItem, nextAutoCheckStringFromItem, nextChecked);
     syncProjectEditPenaltySwitchNode(switchNode, nextChecked);
-    syncProjectEditPenaltyAutoCheckCell(row, nextAutoCheckData, nextAutoCheckString);
+    syncProjectEditPenaltyAutoCheckCell(row, nextAutoCheckDataFromItem, nextAutoCheckStringFromItem);
     setProjectEditPenaltyRowBusyState(rowKey, true);
     syncProjectEditPenaltySwitchBusyState(switchNode);
 
-    sendProjectEditPenaltyGroupUpdate(dataItem, nextAutoCheckData, nextAutoCheckString)
+    sendProjectEditPenaltyGroupUpdate(dataItem, nextAutoCheckDataFromItem, nextAutoCheckStringFromItem)
         .done((response) => {
             const responseItem = getProjectEditPenaltyResponseItem(response, dataItem);
             const hasResponseAutoCheckState = hasProjectEditPenaltyAutoCheckStateInResponse(responseItem);
@@ -1830,10 +1832,10 @@ function toggleProjectEditPenaltySwitchInput(switchNode) {
 
             const resolvedAutoCheckData = hasResponseAutoCheckState
                 ? getProjectEditPenaltyAutoCheckEntries(dataItem)
-                : nextAutoCheckData;
+                : nextAutoCheckDataFromItem;
             const resolvedAutoCheckString = hasResponseAutoCheckState
                 ? getProjectEditPenaltyAutoCheckStringValue(dataItem)
-                : nextAutoCheckString;
+                : nextAutoCheckStringFromItem;
             const resolvedChecked = hasResponseAutoCheckState
                 ? getProjectEditPenaltyInitialState(dataItem)
                 : nextChecked;
@@ -1853,12 +1855,12 @@ function toggleProjectEditPenaltySwitchInput(switchNode) {
             projectEditPenaltyToggleState.set(rowKey, previousChecked);
             applyProjectEditPenaltyDataItemState(
                 dataItem,
-                previousAutoCheckData,
-                previousAutoCheckString,
+                previousAutoCheckDataFromItem,
+                previousAutoCheckStringFromItem,
                 previousChecked
             );
             syncProjectEditPenaltySwitchNode(switchNode, previousChecked);
-            syncProjectEditPenaltyAutoCheckCell(row, previousAutoCheckData, previousAutoCheckString);
+            syncProjectEditPenaltyAutoCheckCell(row, previousAutoCheckDataFromItem, previousAutoCheckStringFromItem);
 
             if (typeof onFailAjax === "function") {
                 onFailAjax(response);
