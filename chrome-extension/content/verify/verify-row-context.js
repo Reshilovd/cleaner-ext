@@ -1,5 +1,55 @@
 "use strict";
 
+    var verifyHeaderIndexesCache =
+        typeof verifyHeaderIndexesCache !== "undefined" && verifyHeaderIndexesCache
+            ? verifyHeaderIndexesCache
+            : new WeakMap();
+
+    function getVerifyHeaderIndexes(gridRoot) {
+        const fallback = { incorrectIndex: -1, postponeIndex: -1 };
+        if (!gridRoot || !(gridRoot instanceof HTMLElement)) {
+            return fallback;
+        }
+
+        const headerRow = gridRoot.querySelector(".k-grid-header thead tr[role='row']");
+        if (!headerRow) {
+            return fallback;
+        }
+
+        const headerCells = headerRow.querySelectorAll("th[role='columnheader']");
+        if (!headerCells || !headerCells.length) {
+            return fallback;
+        }
+
+        const headerSignature = Array.from(headerCells)
+            .map((cell) => String(cell.textContent || "").trim().toLowerCase())
+            .join("|");
+
+        const cached = verifyHeaderIndexesCache.get(gridRoot);
+        if (cached && cached.signature === headerSignature) {
+            return cached.indexes;
+        }
+
+        let incorrectIndex = -1;
+        let postponeIndex = -1;
+        for (let i = 0; i < headerCells.length; i += 1) {
+            const text = String(headerCells[i].textContent || "").trim().toLowerCase();
+            if (!text) {
+                continue;
+            }
+            if (incorrectIndex === -1 && text.includes("некоррект")) {
+                incorrectIndex = i;
+            }
+            if (postponeIndex === -1 && text.includes("отлож")) {
+                postponeIndex = i;
+            }
+        }
+
+        const indexes = { incorrectIndex, postponeIndex };
+        verifyHeaderIndexesCache.set(gridRoot, { signature: headerSignature, indexes });
+        return indexes;
+    }
+
     function getVerifyGridRootByRow(row) {
         if (!row || !(row instanceof HTMLElement)) return null;
         return row.closest("#grid, #gridOpenEnds, [data-role='grid']") || null;
@@ -101,17 +151,7 @@
     function getVerifyRowIncorrectPostpone(gridRoot, row) {
         const out = { incorrect: false, postpone: false };
         if (!gridRoot || !row || !(row instanceof HTMLTableRowElement)) return out;
-        const headerRow = gridRoot.querySelector(".k-grid-header thead tr[role='row']");
-        const headerCells = headerRow ? headerRow.querySelectorAll("th[role='columnheader']") : null;
-        let incorrectIndex = -1;
-        let postponeIndex = -1;
-        if (headerCells && headerCells.length) {
-            for (let i = 0; i < headerCells.length; i += 1) {
-                const text = (headerCells[i].textContent || "").trim().toLowerCase();
-                if (incorrectIndex === -1 && text.includes("некоррект")) incorrectIndex = i;
-                if (postponeIndex === -1 && text.includes("отлож")) postponeIndex = i;
-            }
-        }
+        const { incorrectIndex, postponeIndex } = getVerifyHeaderIndexes(gridRoot);
         const cells = row.querySelectorAll("td[role='gridcell']");
         const incorrectCell = incorrectIndex >= 0 && incorrectIndex < cells.length ? cells[incorrectIndex] : null;
         const postponeCell = postponeIndex >= 0 && postponeIndex < cells.length ? cells[postponeIndex] : null;

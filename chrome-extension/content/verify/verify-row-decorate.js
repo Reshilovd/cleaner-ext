@@ -1,12 +1,16 @@
 "use strict";
 
-    function applyVerifyRowVisibility(gridRoot) {
+    function applyVerifyRowVisibility(gridRoot, options) {
         if (!gridRoot) return;
+        const rowsFromOptions =
+            options && Array.isArray(options.rows)
+                ? options.rows.filter((row) => row instanceof HTMLTableRowElement)
+                : null;
         const projectId = getProjectIdForVerify();
         const alreadyInManualSet = projectId ? getManualBfridsSetForProject(projectId) : new Set();
         const verifyIncorrectSet = projectId ? getVerifyIncorrectIdsSetForProject(projectId) : new Set();
         const ratingReasonMap = projectId ? getRatingReasonCodesForProject(projectId) : {};
-        const rows = gridRoot.querySelectorAll("tr.k-master-row");
+        const rows = rowsFromOptions || gridRoot.querySelectorAll("tr.k-master-row");
         const REASON_ICON_CONFIG = {
             1: { url: chrome.runtime.getURL("icons/inc.png"), alt: "Некорректный ответ" },
             3: { url: chrome.runtime.getURL("icons/table.png"), alt: "Одинаковые табличные ответы" },
@@ -251,25 +255,7 @@
         }
         row.dataset.qgaExclusiveCheckboxesBound = "1";
 
-        const headerRow = gridRoot.querySelector(".k-grid-header thead tr[role='row']");
-        const headerCells = headerRow
-            ? headerRow.querySelectorAll("th[role='columnheader']")
-            : null;
-
-        let incorrectIndex = -1;
-        let postponeIndex = -1;
-
-        if (headerCells && headerCells.length) {
-            for (let i = 0; i < headerCells.length; i += 1) {
-                const text = (headerCells[i].textContent || "").trim().toLowerCase();
-                if (incorrectIndex === -1 && text.includes("некоррект")) {
-                    incorrectIndex = i;
-                }
-                if (postponeIndex === -1 && text.includes("отлож")) {
-                    postponeIndex = i;
-                }
-            }
-        }
+        const { incorrectIndex, postponeIndex } = getVerifyHeaderIndexes(gridRoot);
 
         const cells = row.querySelectorAll("td[role='gridcell']");
         if (!cells.length) {

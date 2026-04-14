@@ -15,6 +15,29 @@
 
         if (!gridRoot.dataset.qgaVerifyBound) {
             gridRoot.dataset.qgaVerifyBound = "1";
+            const pendingVisibilityRows = new Set();
+            let visibilityRafId = 0;
+
+            const scheduleVerifyVisibilityUpdate = (row) => {
+                if (row instanceof HTMLTableRowElement) {
+                    pendingVisibilityRows.add(row);
+                }
+
+                if (visibilityRafId) {
+                    return;
+                }
+
+                visibilityRafId = window.requestAnimationFrame(() => {
+                    visibilityRafId = 0;
+                    if (pendingVisibilityRows.size > 0) {
+                        const rows = Array.from(pendingVisibilityRows);
+                        pendingVisibilityRows.clear();
+                        applyVerifyRowVisibility(gridRoot, { rows });
+                        return;
+                    }
+                    applyVerifyRowVisibility(gridRoot);
+                });
+            };
 
             gridRoot.addEventListener("click", async (event) => {
                 const target = event.target instanceof HTMLElement ? event.target : null;
@@ -84,7 +107,8 @@
                 const target = event.target;
                 if (!(target instanceof HTMLInputElement)) return;
                 if (target.type !== "checkbox") return;
-                applyVerifyRowVisibility(gridRoot);
+                const row = target.closest("tr.k-master-row");
+                scheduleVerifyVisibilityUpdate(row);
             });
         }
 
