@@ -44,6 +44,9 @@
             buildPanel();
             hidePanel();
             setupProjectEditStatsWidget();
+            if (typeof setupProjectEditFavoriteToggle === "function") {
+                setupProjectEditFavoriteToggle();
+            }
             if (typeof setupProjectEditPenaltyToggle === "function") {
                 setupProjectEditPenaltyToggle();
             }
@@ -63,6 +66,9 @@
             ensureManualGroupButtonHooked();
             window.addEventListener("hashchange", () => {
                 setupOpenEndsVerifyShortcut();
+                if (typeof setupProjectEditFavoriteToggle === "function") {
+                    setupProjectEditFavoriteToggle();
+                }
                 if (!isOpenEndsHash() && state.panel) {
                     if (typeof clearScheduledOpenEndsGroupsRefresh === "function") {
                         clearScheduledOpenEndsGroupsRefresh();

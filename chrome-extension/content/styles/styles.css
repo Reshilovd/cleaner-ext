@@ -463,6 +463,12 @@
             .qga-verify-row-speedster:hover {
                 background-color: #fed7aa !important;
             }
+            tr.qga-verify-row-gradient-incorrect-speedster:hover {
+                background: linear-gradient(to right, rgb(255 192 192), rgb(249 225 192)) !important;
+            }
+            tr[data-qga-row-gradient="1"]:hover {
+                background: var(--qga-row-hover-gradient, inherit) !important;
+            }
             .qga-verify-row-tech-defect {
                 background-color: #fef9c3 !important;
             }
@@ -599,6 +605,23 @@
                 color: #ffc107;
                 border-color: #ffc107;
                 background: #fff7ed;
+            }
+            .qga-project-edit-fav-btn-wrap {
+                display: inline-flex;
+                align-items: center;
+                margin-left: 16px;
+                vertical-align: middle;
+            }
+            .qga-project-edit-fav-btn {
+                margin: 0;
+                width: 24px;
+                height: 24px;
+                border-radius: 6px;
+                font-size: 18px;
+                line-height: 1;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
             }
             .qga-cleaner-project-fav-only-hidden-row {
                 display: none !important;

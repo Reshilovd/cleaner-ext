@@ -129,6 +129,12 @@
         ]).then(() => {
             applyVerifyRowVisibility(gridRoot);
         });
+
+        if (typeof setupManualBfridsServerSyncForVerifyMain === "function") {
+            setupManualBfridsServerSyncForVerifyMain(() => {
+                applyVerifyRowVisibility(gridRoot);
+            });
+        }
     }
 
     function setupVerifyMainManualIntegration() {

@@ -1,4 +1,142 @@
-﻿"use strict";
+"use strict";
+
+    var projectEditFavoriteUiSyncTimer =
+        typeof projectEditFavoriteUiSyncTimer !== "undefined" ? projectEditFavoriteUiSyncTimer : null;
+
+    function setupProjectEditFavoriteToggle() {
+        scheduleProjectEditFavoriteToggleSync(0);
+    }
+
+    function scheduleProjectEditFavoriteToggleSync(delayMs) {
+        if (projectEditFavoriteUiSyncTimer) {
+            clearTimeout(projectEditFavoriteUiSyncTimer);
+        }
+        const delay = Number.isFinite(delayMs) ? Math.max(0, delayMs) : 120;
+        projectEditFavoriteUiSyncTimer = setTimeout(() => {
+            projectEditFavoriteUiSyncTimer = null;
+            syncProjectEditFavoriteToggle();
+        }, delay);
+    }
+
+    function syncProjectEditFavoriteToggle() {
+        if (PAGE_KIND !== "openends") {
+            return;
+        }
+
+        const projectId = sanitizeProjectId(
+            typeof getProjectIdFromEditPage === "function" ? getProjectIdFromEditPage() : ""
+        );
+        if (!projectId) {
+            return;
+        }
+
+        const anchor = findProjectEditFavoriteAnchor();
+        if (!(anchor instanceof HTMLElement)) {
+            return;
+        }
+
+        let wrap = document.getElementById("qga-project-edit-fav-wrap");
+        if (!(wrap instanceof HTMLElement)) {
+            wrap = document.createElement("span");
+            wrap.id = "qga-project-edit-fav-wrap";
+            wrap.className = "qga-project-edit-fav-btn-wrap";
+        }
+
+        let btn = wrap.querySelector(".qga-cleaner-project-fav-btn");
+        if (!(btn instanceof HTMLElement)) {
+            btn = document.createElement("div");
+            btn.className = "qga-cleaner-project-fav-btn qga-project-edit-fav-btn";
+            btn.setAttribute("role", "button");
+            btn.setAttribute("tabindex", "0");
+
+            const toggle = (event) => {
+                if (event instanceof Event) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                }
+                const pid = sanitizeProjectId(btn.dataset.qgaCleanerProjectId || "");
+                if (!pid) {
+                    return;
+                }
+
+                const favorites = getCleanerProjectsFavoritesSet();
+                if (favorites.has(pid)) {
+                    favorites.delete(pid);
+                } else {
+                    favorites.add(pid);
+                }
+                saveCleanerProjectsFavoritesSet(favorites);
+                updateProjectEditFavoriteButtonState(btn, pid);
+            };
+
+            btn.addEventListener("click", toggle);
+            btn.addEventListener("keydown", (event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                    toggle(event);
+                }
+            });
+            wrap.appendChild(btn);
+        }
+
+        btn.dataset.qgaCleanerProjectId = projectId;
+        updateProjectEditFavoriteButtonState(btn, projectId);
+
+        if (wrap.parentElement !== anchor.parentElement || wrap.previousElementSibling !== anchor) {
+            anchor.insertAdjacentElement("afterend", wrap);
+        }
+    }
+
+    function updateProjectEditFavoriteButtonState(button, projectId) {
+        if (!(button instanceof HTMLElement) || !projectId) {
+            return;
+        }
+        const favorites = getCleanerProjectsFavoritesSet();
+        const isFav = favorites.has(projectId);
+        button.textContent = isFav ? "\u2605" : "\u2606";
+        button.classList.toggle("qga-cleaner-project-fav-btn--fav", isFav);
+        button.setAttribute("aria-label", isFav ? "Убрать из избранного" : "Добавить в избранное");
+        button.title = isFav ? "Убрать из избранного" : "Добавить в избранное";
+    }
+
+    function findProjectEditFavoriteAnchor() {
+        const statusAliases = ["запущен", "остановлен", "пауза", "paused", "active", "draft", "черновик"];
+        const candidates = Array.from(document.querySelectorAll("span, div, a, label")).filter((node) => {
+            if (!(node instanceof HTMLElement)) {
+                return false;
+            }
+            if (!isElementVisible(node)) {
+                return false;
+            }
+            if (node.children.length > 0) {
+                return false;
+            }
+            const text = normalizeSingleLine(node.textContent || "").toLowerCase();
+            if (!text) {
+                return false;
+            }
+            return statusAliases.some((alias) => text.includes(alias));
+        });
+
+        if (candidates.length > 0) {
+            return candidates[0];
+        }
+
+        const idCandidates = Array.from(document.querySelectorAll("span, div, a, label")).filter((node) => {
+            if (!(node instanceof HTMLElement)) {
+                return false;
+            }
+            if (!isElementVisible(node)) {
+                return false;
+            }
+            if (node.children.length > 0) {
+                return false;
+            }
+            const text = normalizeSingleLine(node.textContent || "");
+            return /^id\s*\d+/i.test(text);
+        });
+
+        return idCandidates[0] || null;
+    }
 
     function setupCleanerProjectsFavorites() {
         if (state.cleanerProjectsFavoritesBound) {

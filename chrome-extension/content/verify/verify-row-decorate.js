@@ -25,21 +25,43 @@
             4: "#ffedd5",
             6: "#fef9c3"
         };
+        const ROW_BG_HOVER_COLOR = {
+            1: "rgb(250, 204, 204)",
+            2: "#e9d5ff",
+            3: "#bfdbfe",
+            4: "rgb(249, 225, 192)",
+            6: "#fef08a"
+        };
 
         for (const row of rows) {
             if (!(row instanceof HTMLTableRowElement)) continue;
             row.classList.remove("qga-verify-row-hidden");
+            row.classList.remove("qga-verify-row-gradient-incorrect-speedster");
             ALL_ROW_REASON_CLASSES.forEach((cls) => row.classList.remove(cls));
 
             const { incorrect, postpone } = getVerifyRowIncorrectPostpone(gridRoot, row);
             const hasManualOverride = incorrect || postpone;
 
             if (hasManualOverride) {
-                if (row.dataset.qgaRowGradient === "1") {
-                    delete row.dataset.qgaRowGradient;
+                row.style.removeProperty("background");
+                row.style.removeProperty("background-color");
+                row.style.removeProperty("--qga-row-hover-gradient");
+                delete row.dataset.qgaRowGradient;
+                row.classList.remove("qga-verify-row-gradient-incorrect-speedster");
+                if (incorrect) {
+                    row.style.setProperty("background", "rgb(250, 204, 204)", "important");
+                    row.dataset.qgaManualOverrideBg = "incorrect";
+                } else if (postpone) {
+                    row.style.setProperty("background", "#e5e7eb", "important");
+                    row.dataset.qgaManualOverrideBg = "postpone";
                 }
-                // Не трогаем background: стандартная чистилка сама перекрасит строку
                 continue;
+            }
+
+            if (row.dataset.qgaManualOverrideBg) {
+                row.style.removeProperty("background");
+                row.style.removeProperty("background-color");
+                delete row.dataset.qgaManualOverrideBg;
             }
 
             let allCodes = [];
@@ -82,9 +104,18 @@
             let appliedGradient = false;
             if (allCodes.length > 1) {
                 const colors = allCodes.map((c) => ROW_BG_COLOR[c]).filter(Boolean);
+                const hoverColors = allCodes.map((c) => ROW_BG_HOVER_COLOR[c]).filter(Boolean);
                 if (colors.length > 1) {
                     row.style.background = "linear-gradient(to right, " + colors.join(", ") + ")";
                     row.dataset.qgaRowGradient = "1";
+                    if (hoverColors.length > 1) {
+                        row.style.setProperty("--qga-row-hover-gradient", "linear-gradient(to right, " + hoverColors.join(", ") + ")");
+                    } else {
+                        row.style.removeProperty("--qga-row-hover-gradient");
+                    }
+                    if (allCodes.includes(1) && allCodes.includes(4)) {
+                        row.classList.add("qga-verify-row-gradient-incorrect-speedster");
+                    }
                     appliedGradient = true;
                 }
             }
@@ -92,6 +123,7 @@
             if (!appliedGradient) {
                 if (row.dataset.qgaRowGradient === "1") {
                     row.style.removeProperty("background");
+                    row.style.removeProperty("--qga-row-hover-gradient");
                     delete row.dataset.qgaRowGradient;
                 }
                 const rowClass = REASON_CODE_ROW_CLASS[topCode];

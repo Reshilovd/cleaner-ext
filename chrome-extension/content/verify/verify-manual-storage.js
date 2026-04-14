@@ -8,6 +8,12 @@ var openEndsGroupsRefreshStopTimer =
     typeof openEndsGroupsRefreshStopTimer !== "undefined" ? openEndsGroupsRefreshStopTimer : null;
 var openEndsGroupsRefreshDebounceTimer =
     typeof openEndsGroupsRefreshDebounceTimer !== "undefined" ? openEndsGroupsRefreshDebounceTimer : null;
+var manualBfridsServerSyncTimer =
+    typeof manualBfridsServerSyncTimer !== "undefined" ? manualBfridsServerSyncTimer : null;
+var manualBfridsServerSyncInFlight =
+    typeof manualBfridsServerSyncInFlight !== "undefined" ? manualBfridsServerSyncInFlight : null;
+var MANUAL_BFRIDS_SERVER_SYNC_TTL_MS =
+    typeof MANUAL_BFRIDS_SERVER_SYNC_TTL_MS !== "undefined" ? MANUAL_BFRIDS_SERVER_SYNC_TTL_MS : 30 * 1000;
 
     function getProjectIdForVerify() {
         const byId = document.getElementById("ProjectId");
@@ -241,6 +247,119 @@ var openEndsGroupsRefreshDebounceTimer =
         } catch (error) {
             console.warn("[QGA] Не удалось сохранить состояние API ручной чистки в localStorage:", error);
         }
+    }
+
+    function getManualApiSyncedAt(projectId) {
+        const key = String(projectId || "").trim();
+        if (!key || !manualApiState || typeof manualApiState !== "object") {
+            return 0;
+        }
+        const entry = manualApiState[key];
+        const syncedAt = entry && Number(entry.syncedAt);
+        return Number.isFinite(syncedAt) && syncedAt > 0 ? syncedAt : 0;
+    }
+
+    function setManualApiEntry(projectId, token, bfridsArray) {
+        const key = String(projectId || "").trim();
+        if (!key || !Array.isArray(bfridsArray)) {
+            return false;
+        }
+
+        if (!manualApiState || typeof manualApiState !== "object" || Array.isArray(manualApiState)) {
+            manualApiState = {};
+        }
+
+        const prev = manualApiState[key] && typeof manualApiState[key] === "object" ? manualApiState[key] : {};
+        manualApiState[key] = {
+            token: token || prev.token || "",
+            bfrids: mergeManualBfridsLists([], bfridsArray).join("\n"),
+            syncedAt: Date.now()
+        };
+        saveManualApiState(manualApiState);
+        return true;
+    }
+
+    async function refreshManualBfridsStateForProject(projectId, options) {
+        const key = String(projectId || "").trim();
+        if (!key) {
+            return false;
+        }
+
+        const force = !!(options && options.force);
+        const ttlMs = Number.isFinite(options && options.ttlMs) ? Math.max(0, Number(options.ttlMs)) : MANUAL_BFRIDS_SERVER_SYNC_TTL_MS;
+        const lastSyncedAt = getManualApiSyncedAt(key);
+        if (!force && lastSyncedAt > 0 && Date.now() - lastSyncedAt < ttlMs) {
+            return false;
+        }
+
+        if (manualBfridsServerSyncInFlight) {
+            return await manualBfridsServerSyncInFlight;
+        }
+
+        manualBfridsServerSyncInFlight = (async () => {
+            try {
+                const snapshot = await loadActualManualStateSnapshot(key);
+                const token = snapshot && typeof snapshot.token === "string" ? snapshot.token : "";
+                const bfridsFromServer =
+                    snapshot && snapshot.hasBfridsField
+                        ? snapshot.bfrids.slice()
+                        : await loadActualManualBfridsFromApi(key);
+
+                if (!Array.isArray(bfridsFromServer)) {
+                    return false;
+                }
+
+                setManualApiEntry(key, token, bfridsFromServer);
+                return true;
+            } catch (error) {
+                console.warn("[QGA] Не удалось обновить manual bfrids с сервера:", error);
+                return false;
+            } finally {
+                manualBfridsServerSyncInFlight = null;
+            }
+        })();
+
+        return await manualBfridsServerSyncInFlight;
+    }
+
+    function setupManualBfridsServerSyncForVerifyMain(onSynced) {
+        if (PAGE_KIND !== "openends_verify") {
+            return;
+        }
+
+        const projectId = getProjectIdForVerify();
+        if (!projectId) {
+            return;
+        }
+
+        const runSync = async (force) => {
+            const changed = await refreshManualBfridsStateForProject(projectId, { force: !!force });
+            if (changed && typeof onSynced === "function") {
+                onSynced();
+            }
+        };
+
+        runSync(true);
+
+        if (manualBfridsServerSyncTimer) {
+            clearInterval(manualBfridsServerSyncTimer);
+        }
+        manualBfridsServerSyncTimer = setInterval(() => {
+            runSync(false);
+        }, MANUAL_BFRIDS_SERVER_SYNC_TTL_MS);
+
+        if (!document.body || document.body.dataset.qgaManualBfridsSyncFocusBound === "1") {
+            return;
+        }
+        document.body.dataset.qgaManualBfridsSyncFocusBound = "1";
+        window.addEventListener("focus", () => {
+            runSync(true);
+        });
+        document.addEventListener("visibilitychange", () => {
+            if (document.visibilityState === "visible") {
+                runSync(true);
+            }
+        });
     }
 
     function loadRatingIncorrectIdsState() {
