@@ -1,12 +1,54 @@
 "use strict";
 
+    var VERIFY_MODAL_MAX_HEIGHT_STORAGE_KEY =
+        typeof VERIFY_MODAL_MAX_HEIGHT_STORAGE_KEY !== "undefined"
+            ? VERIFY_MODAL_MAX_HEIGHT_STORAGE_KEY
+            : "__qga_verify_modal_max_height_px_v1__";
+
+    function getVerifyModalDefaultMaxHeightPx() {
+        const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+        return Math.max(140, Math.floor(viewportHeight * 0.5));
+    }
+
+    function loadVerifyModalStoredMaxHeightPx() {
+        try {
+            const raw = localStorage.getItem(VERIFY_MODAL_MAX_HEIGHT_STORAGE_KEY);
+            const value = Number.parseInt(String(raw || "").trim(), 10);
+            return Number.isFinite(value) && value > 0 ? value : 0;
+        } catch (_error) {
+            return 0;
+        }
+    }
+
+    function saveVerifyModalStoredMaxHeightPx(value) {
+        try {
+            localStorage.setItem(VERIFY_MODAL_MAX_HEIGHT_STORAGE_KEY, String(value));
+        } catch (_error) {}
+    }
+
+    function clearVerifyModalStoredMaxHeightPx() {
+        try {
+            localStorage.removeItem(VERIFY_MODAL_MAX_HEIGHT_STORAGE_KEY);
+        } catch (_error) {}
+    }
+
+    function getVerifyModalEffectiveMaxHeightPx() {
+        const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+        const defaultMax = getVerifyModalDefaultMaxHeightPx();
+        const stored = loadVerifyModalStoredMaxHeightPx();
+        const hardMax = Math.max(140, viewportHeight - 12);
+        if (!Number.isFinite(stored) || stored <= 0) {
+            return Math.min(defaultMax, hardMax);
+        }
+        return Math.min(stored, hardMax);
+    }
+
     function makeVerifyModalHeaderResizable(modal) {
         if (!(modal instanceof HTMLElement) || modal.dataset.qgaVerifyModalHeaderResizable === "1") {
             return;
         }
 
         const header = modal.querySelector(".qga-verify-modal__header");
-        const bottomHandle = modal.querySelector(".qga-verify-modal__resize-bottom");
         if (!(header instanceof HTMLElement)) {
             return;
         }
@@ -18,21 +60,17 @@
             return Math.min(Math.max(minHeightPx, height), maxHeightPx);
         };
 
-        const setupResize = (event, edge) => {
+        const setupResize = (event) => {
             if (event.button !== 0) {
                 return;
             }
             if (event.target instanceof Element && event.target.closest(".qga-verify-modal__close")) {
                 return;
             }
-            if (
-                edge === "top" &&
-                event.target instanceof Element &&
-                event.target.closest(".qga-verify-modal__title")
-            ) {
+            if (event.target instanceof Element && event.target.closest(".qga-verify-modal__title")) {
                 return;
             }
-            if (edge === "top" && event.currentTarget instanceof HTMLElement) {
+            if (event.currentTarget instanceof HTMLElement) {
                 const rect = event.currentTarget.getBoundingClientRect();
                 const gripZonePx = 6;
                 if (event.clientY - rect.top > gripZonePx) {
@@ -43,7 +81,6 @@
             const minHeightPx = 140;
             const startRect = modal.getBoundingClientRect();
             const startHeight = startRect.height;
-            const startTop = startRect.top;
             const startBottomOffset = Math.max(
                 0,
                 (window.innerHeight || document.documentElement.clientHeight || 0) - startRect.bottom
@@ -52,31 +89,18 @@
             let latestClientY = startY;
             let rafId = null;
 
-            if (edge === "top") {
-                // Ресайз сверху: фиксируем окно по нижней границе, увеличиваем/уменьшаем только высоту.
-                modal.style.top = "auto";
-                modal.style.bottom = startBottomOffset + "px";
-            } else {
-                // Ресайз снизу: фиксируем верхнюю границу, меняем нижнюю.
-                modal.style.top = startTop + "px";
-                modal.style.bottom = "auto";
-            }
+            // Ресайз сверху: фиксируем окно по нижней границе, увеличиваем/уменьшаем только высоту.
+            modal.style.maxHeight = "98vh";
+            modal.style.top = "auto";
+            modal.style.bottom = startBottomOffset + "px";
             modal.style.height = startHeight + "px";
 
             const applyResizeFrame = () => {
                 rafId = null;
                 const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
 
-                if (edge === "top") {
-                    const maxHeightPx = Math.max(minHeightPx, viewportHeight - startBottomOffset - 12);
-                    const delta = startY - latestClientY;
-                    const nextHeight = clampModalHeight(startHeight + delta, minHeightPx, maxHeightPx);
-                    modal.style.height = nextHeight + "px";
-                    return;
-                }
-
-                const maxHeightPx = Math.max(minHeightPx, viewportHeight - startTop - 12);
-                const delta = latestClientY - startY;
+                const maxHeightPx = Math.max(minHeightPx, viewportHeight - startBottomOffset - 12);
+                const delta = startY - latestClientY;
                 const nextHeight = clampModalHeight(startHeight + delta, minHeightPx, maxHeightPx);
                 modal.style.height = nextHeight + "px";
             };
@@ -96,6 +120,11 @@
                     cancelAnimationFrame(rafId);
                     rafId = null;
                 }
+                const currentHeight = Math.round(modal.getBoundingClientRect().height);
+                if (Number.isFinite(currentHeight) && currentHeight >= 140) {
+                    // Запоминаем последний выбранный размер независимо от 50% экрана.
+                    saveVerifyModalStoredMaxHeightPx(currentHeight);
+                }
             };
 
             document.addEventListener("mousemove", handleMouseMove);
@@ -103,10 +132,17 @@
             event.preventDefault();
         };
 
-        header.addEventListener("mousedown", (event) => setupResize(event, "top"));
-        if (bottomHandle instanceof HTMLElement) {
-            bottomHandle.addEventListener("mousedown", (event) => setupResize(event, "bottom"));
+        header.addEventListener("mousedown", setupResize);
+    }
+
+    function applyVerifyModalInitialSize(modal) {
+        if (!(modal instanceof HTMLElement)) {
+            return;
         }
+        modal.style.top = "auto";
+        modal.style.bottom = "12px";
+        modal.style.height = "auto";
+        modal.style.maxHeight = getVerifyModalEffectiveMaxHeightPx() + "px";
     }
 
     function clearVerifyRowPostponeSelection(rowState) {
@@ -297,7 +333,6 @@
                 <div class="qga-verify-modal__body">
                     <ul class="qga-verify-modal__list"></ul>
                 </div>
-                <div class="qga-verify-modal__resize-bottom" aria-hidden="true"></div>
             `;
 
             const closeButton = modal.querySelector(".qga-verify-modal__close");
@@ -332,6 +367,7 @@
 
         ALL_MODAL_REASON_CLASSES.forEach((cls) => modal.classList.remove(cls));
         modal.classList.remove("qga-verify-modal--candidates");
+        applyVerifyModalInitialSize(modal);
         modal.style.display = "flex";
     }
 
@@ -349,7 +385,6 @@
                     <ul class="qga-verify-modal__list"></ul>
                     <div class="qga-verify-modal__footer"></div>
                 </div>
-                <div class="qga-verify-modal__resize-bottom" aria-hidden="true"></div>
             `;
 
             const closeButton = modal.querySelector(".qga-verify-modal__close");
@@ -510,6 +545,7 @@
             footerNode.appendChild(manualLabel);
         }
 
+        applyVerifyModalInitialSize(modal);
         modal.style.display = "flex";
         return context;
     }
@@ -527,7 +563,6 @@
                 <div class="qga-verify-modal__body">
                     <ul class="qga-verify-modal__list"></ul>
                 </div>
-                <div class="qga-verify-modal__resize-bottom" aria-hidden="true"></div>
             `;
 
             const closeButton = modal.querySelector(".qga-verify-modal__close");
@@ -735,6 +770,7 @@
             listNode.replaceChildren(fragment);
         }
 
+        applyVerifyModalInitialSize(modal);
         modal.style.display = "flex";
         return context;
     }
