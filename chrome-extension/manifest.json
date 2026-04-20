@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Cleaner Assistant",
   "description": "Внутренний инструмент для Cleaner и Pyrus: OpenEnds, VerifyMain, ручная чистка и перенос данных проекта.",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "permissions": [
     "storage",
     "scripting"
