@@ -25,6 +25,20 @@
             if (event.target instanceof Element && event.target.closest(".qga-verify-modal__close")) {
                 return;
             }
+            if (
+                edge === "top" &&
+                event.target instanceof Element &&
+                event.target.closest(".qga-verify-modal__title")
+            ) {
+                return;
+            }
+            if (edge === "top" && event.currentTarget instanceof HTMLElement) {
+                const rect = event.currentTarget.getBoundingClientRect();
+                const gripZonePx = 6;
+                if (event.clientY - rect.top > gripZonePx) {
+                    return;
+                }
+            }
 
             const minHeightPx = 140;
             const startRect = modal.getBoundingClientRect();

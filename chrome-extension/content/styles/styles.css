@@ -256,6 +256,9 @@
             .qga-verify-modal__title {
                 font-size: 14px;
                 font-weight: 600;
+                cursor: text;
+                user-select: text;
+                -webkit-user-select: text;
             }
             .qga-verify-modal__close {
                 border: none;
