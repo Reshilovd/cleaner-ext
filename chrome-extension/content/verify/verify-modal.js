@@ -35,36 +35,53 @@
                 (window.innerHeight || document.documentElement.clientHeight || 0) - startRect.bottom
             );
             const startY = event.clientY;
+            let latestClientY = startY;
+            let rafId = null;
 
-            const handleMouseMove = (moveEvent) => {
-                const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
-                if (edge === "top") {
-                    // Ресайз сверху: фиксируем окно по нижней границе, увеличиваем/уменьшаем только высоту.
-                    modal.style.top = "auto";
-                    modal.style.bottom = startBottomOffset + "px";
-                    modal.style.height = startHeight + "px";
-                    const maxHeightPx = Math.max(minHeightPx, viewportHeight - startBottomOffset - 12);
-                    const delta = startY - moveEvent.clientY;
-                    const nextHeight = clampModalHeight(startHeight + delta, minHeightPx, maxHeightPx);
-                    modal.style.height = nextHeight + "px";
-                    moveEvent.preventDefault();
-                    return;
-                }
-
+            if (edge === "top") {
+                // Ресайз сверху: фиксируем окно по нижней границе, увеличиваем/уменьшаем только высоту.
+                modal.style.top = "auto";
+                modal.style.bottom = startBottomOffset + "px";
+            } else {
                 // Ресайз снизу: фиксируем верхнюю границу, меняем нижнюю.
                 modal.style.top = startTop + "px";
                 modal.style.bottom = "auto";
-                modal.style.height = startHeight + "px";
+            }
+            modal.style.height = startHeight + "px";
+
+            const applyResizeFrame = () => {
+                rafId = null;
+                const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+
+                if (edge === "top") {
+                    const maxHeightPx = Math.max(minHeightPx, viewportHeight - startBottomOffset - 12);
+                    const delta = startY - latestClientY;
+                    const nextHeight = clampModalHeight(startHeight + delta, minHeightPx, maxHeightPx);
+                    modal.style.height = nextHeight + "px";
+                    return;
+                }
+
                 const maxHeightPx = Math.max(minHeightPx, viewportHeight - startTop - 12);
-                const delta = moveEvent.clientY - startY;
+                const delta = latestClientY - startY;
                 const nextHeight = clampModalHeight(startHeight + delta, minHeightPx, maxHeightPx);
                 modal.style.height = nextHeight + "px";
+            };
+
+            const handleMouseMove = (moveEvent) => {
+                latestClientY = moveEvent.clientY;
+                if (rafId === null) {
+                    rafId = requestAnimationFrame(applyResizeFrame);
+                }
                 moveEvent.preventDefault();
             };
 
             const handleMouseUp = () => {
                 document.removeEventListener("mousemove", handleMouseMove);
                 document.removeEventListener("mouseup", handleMouseUp);
+                if (rafId !== null) {
+                    cancelAnimationFrame(rafId);
+                    rafId = null;
+                }
             };
 
             document.addEventListener("mousemove", handleMouseMove);
