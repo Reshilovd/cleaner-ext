@@ -103,7 +103,20 @@
                     }
                 } catch (error) {
                     console.error("[QGA] Ошибка при загрузке ответов респондента", error);
-                    alert("Произошла ошибка при загрузке ответов респондента. Подробности в консоли.");
+                    const message =
+                        error && typeof error.message === "string" ? error.message : String(error || "");
+                    if (message.toLowerCase().includes("extension context invalidated")) {
+                        if (typeof showVerifyModalInfoMessage === "function") {
+                            showVerifyModalInfoMessage(
+                                "Внимание",
+                                "Не удалось загрузить ответы респондента. Попробуйте обновить страницу."
+                            );
+                        } else {
+                            alert("Не удалось загрузить ответы респондента. Попробуйте обновить страницу.");
+                        }
+                    } else {
+                        alert("Произошла ошибка при загрузке ответов респондента. Подробности в консоли.");
+                    }
                 }
             });
 

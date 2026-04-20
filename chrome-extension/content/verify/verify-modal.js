@@ -150,6 +150,57 @@
         return uniqueCount > 1 ? `${baseTitle} (${uniqueCount})` : baseTitle;
     }
 
+    function showVerifyModalInfoMessage(title, message) {
+        let modal = document.querySelector(".qga-verify-modal");
+        if (!modal) {
+            modal = document.createElement("aside");
+            modal.className = "qga-verify-modal";
+            modal.innerHTML = `
+                <div class="qga-verify-modal__header">
+                    <div class="qga-verify-modal__title"></div>
+                    <button type="button" class="qga-verify-modal__close" aria-label="Закрыть">×</button>
+                </div>
+                <div class="qga-verify-modal__body">
+                    <ul class="qga-verify-modal__list"></ul>
+                </div>
+                <div class="qga-verify-modal__resize-bottom" aria-hidden="true"></div>
+            `;
+
+            const closeButton = modal.querySelector(".qga-verify-modal__close");
+            if (closeButton) {
+                closeButton.addEventListener("click", () => {
+                    modal.style.display = "none";
+                });
+            }
+
+            document.addEventListener("click", function closeOnClickOutside(e) {
+                if (modal.style.display !== "flex") return;
+                if (modal.contains(e.target)) return;
+                modal.style.display = "none";
+            });
+
+            document.documentElement.appendChild(modal);
+            makeVerifyModalHeaderResizable(modal);
+        }
+
+        const titleNode = modal.querySelector(".qga-verify-modal__title");
+        const bodyNode = modal.querySelector(".qga-verify-modal__body");
+        if (titleNode) {
+            titleNode.textContent = String(title || "Внимание");
+        }
+        if (bodyNode) {
+            bodyNode.innerHTML = "";
+            const wrap = document.createElement("div");
+            wrap.className = "qga-verify-modal__message";
+            wrap.textContent = String(message || "");
+            bodyNode.appendChild(wrap);
+        }
+
+        ALL_MODAL_REASON_CLASSES.forEach((cls) => modal.classList.remove(cls));
+        modal.classList.remove("qga-verify-modal--candidates");
+        modal.style.display = "flex";
+    }
+
     function showVerifyRespondentModal(respondentId, answers, context, rowState) {
         let modal = document.querySelector(".qga-verify-modal");
         if (!modal) {

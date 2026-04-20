@@ -365,6 +365,13 @@
                 word-break: break-word;
                 margin-bottom: 2px;
             }
+            .qga-verify-modal__message {
+                font-size: 12px;
+                color: #374151;
+                line-height: 1.45;
+                padding: 4px 2px;
+                white-space: pre-wrap;
+            }
             .qga-verify-modal__item > .qga-verify-modal__text:last-child {
                 margin-bottom: 0;
             }
