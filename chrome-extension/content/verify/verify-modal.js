@@ -150,6 +150,140 @@
         return uniqueCount > 1 ? `${baseTitle} (${uniqueCount})` : baseTitle;
     }
 
+    function getVerifyOpenEndOrderMap() {
+        const map = new Map();
+        const source = state && state.verifyRespondentIdsByOpenEndId;
+        if (!(source instanceof Map)) {
+            return map;
+        }
+        let index = 0;
+        source.forEach((_value, key) => {
+            const normalizedKey = String(key || "").trim();
+            if (!/^\d+$/.test(normalizedKey)) {
+                return;
+            }
+            if (map.has(normalizedKey)) {
+                return;
+            }
+            map.set(normalizedKey, index);
+            index += 1;
+        });
+        return map;
+    }
+
+    function getVerifyVariableOrderMap() {
+        const map = new Map();
+        if (typeof getOpenEndsVariableOrderForProject !== "function") {
+            return map;
+        }
+        const projectKey =
+            typeof getProjectIdForGroupsLookup === "function"
+                ? getProjectIdForGroupsLookup()
+                : typeof getProjectIdForVerify === "function"
+                    ? getProjectIdForVerify()
+                    : "";
+        const orderedCodes = getOpenEndsVariableOrderForProject(projectKey);
+        if (!Array.isArray(orderedCodes) || orderedCodes.length === 0) {
+            return map;
+        }
+        for (let i = 0; i < orderedCodes.length; i += 1) {
+            const code = String(orderedCodes[i] || "").trim();
+            if (code && !map.has(code)) {
+                map.set(code, i);
+            }
+        }
+        return map;
+    }
+
+    function getVerifyModalAnswerSortKey(answer, openEndOrderMap, variableOrderMap) {
+        const questionCodes = parseVerifyVariableCodes(answer && answer.question ? answer.question : "");
+        if (questionCodes.length > 0 && variableOrderMap instanceof Map && variableOrderMap.size > 0) {
+            let best = Infinity;
+            for (const code of questionCodes) {
+                const normalized = String(code || "").trim();
+                if (normalized && variableOrderMap.has(normalized)) {
+                    best = Math.min(best, variableOrderMap.get(normalized));
+                }
+            }
+            if (Number.isFinite(best)) {
+                return best;
+            }
+        }
+
+        const openEndId = String(answer && answer.openEndId != null ? answer.openEndId : "").trim();
+        if (openEndId && openEndOrderMap instanceof Map && openEndOrderMap.has(openEndId)) {
+            return 100000 + openEndOrderMap.get(openEndId);
+        }
+        if (/^\d+$/.test(openEndId)) {
+            return 200000 + Number(openEndId);
+        }
+
+        if (questionCodes.length > 0) {
+            const code = String(questionCodes[0]).trim();
+            const codeMatch = code.match(/(\d+)/);
+            if (codeMatch && codeMatch[1]) {
+                return 300000 + Number(codeMatch[1]);
+            }
+        }
+
+        return 900000;
+    }
+
+    function sortVerifyModalAnswersByQuestionOrder(answers) {
+        if (!Array.isArray(answers) || answers.length <= 1) {
+            return Array.isArray(answers) ? answers.slice() : [];
+        }
+        const openEndOrderMap = getVerifyOpenEndOrderMap();
+        const variableOrderMap = getVerifyVariableOrderMap();
+        const splitNaturalTokens = (value) => {
+            return String(value || "")
+                .trim()
+                .toLowerCase()
+                .match(/(\d+|[^\d]+)/g) || [];
+        };
+        const compareNatural = (left, right) => {
+            const aTokens = splitNaturalTokens(left);
+            const bTokens = splitNaturalTokens(right);
+            const maxLen = Math.max(aTokens.length, bTokens.length);
+            for (let i = 0; i < maxLen; i += 1) {
+                const a = aTokens[i];
+                const b = bTokens[i];
+                if (a == null) return -1;
+                if (b == null) return 1;
+
+                const aNum = /^\d+$/.test(a) ? Number(a) : NaN;
+                const bNum = /^\d+$/.test(b) ? Number(b) : NaN;
+                const bothNums = Number.isFinite(aNum) && Number.isFinite(bNum);
+                if (bothNums) {
+                    if (aNum !== bNum) return aNum - bNum;
+                    if (a.length !== b.length) return a.length - b.length;
+                    continue;
+                }
+                const byText = a.localeCompare(b, "ru");
+                if (byText !== 0) return byText;
+            }
+            return 0;
+        };
+        return answers
+            .map((answer, index) => ({
+                answer,
+                index,
+                sortKey: getVerifyModalAnswerSortKey(answer, openEndOrderMap, variableOrderMap),
+                question: String(answer && answer.question ? answer.question : "").trim()
+            }))
+            .sort((a, b) => {
+                if (a.sortKey !== b.sortKey) {
+                    return a.sortKey - b.sortKey;
+                }
+                const byQuestion = compareNatural(a.question, b.question);
+                if (byQuestion !== 0) {
+                    return byQuestion;
+                }
+                return a.index - b.index;
+            })
+            .map((entry) => entry.answer);
+    }
+
     function showVerifyModalInfoMessage(title, message) {
         let modal = document.querySelector(".qga-verify-modal");
         if (!modal) {
@@ -305,13 +439,14 @@
         if (listNode) {
             const fragment = document.createDocumentFragment();
 
-            if (!answers || answers.length === 0) {
+            const sortedAnswers = sortVerifyModalAnswersByQuestionOrder(answers);
+            if (!sortedAnswers || sortedAnswers.length === 0) {
                 const empty = document.createElement("li");
                 empty.className = "qga-verify-modal__item";
                 empty.textContent = "Другие ответы этого респондента в выгрузке не найдены.";
                 fragment.appendChild(empty);
             } else {
-                for (const answer of answers) {
+                for (const answer of sortedAnswers) {
                     const item = document.createElement("li");
                     item.className = "qga-verify-modal__item";
 
@@ -475,6 +610,7 @@
                     answersMap.get(String(respondentId)) ||
                     answersMap.get(String(respondentId).trim()) ||
                     [];
+                const sortedAnswers = sortVerifyModalAnswersByQuestionOrder(answers);
 
                 const respondentIdStr = String(respondentId).trim();
                 const isAlreadyInManual = alreadyInManualSet.has(respondentIdStr);
@@ -555,13 +691,13 @@
 
                 headerItem.appendChild(header);
 
-                if (!answers || answers.length === 0) {
+                if (!sortedAnswers || sortedAnswers.length === 0) {
                     const empty = document.createElement("div");
                     empty.className = "qga-verify-modal__text";
                     empty.textContent = "Другие ответы этого респондента в выгрузке не найдены.";
                     headerItem.appendChild(empty);
                 } else {
-                    for (const answer of answers) {
+                    for (const answer of sortedAnswers) {
                         const q = document.createElement("div");
                         q.className = "qga-verify-modal__q";
                         q.textContent = answer.question || `OpenEnd Id: ${answer.openEndId}`;

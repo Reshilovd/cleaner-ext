@@ -66,6 +66,38 @@ var MANUAL_BFRIDS_SERVER_SYNC_TTL_MS =
         } catch (e) {}
     }
 
+    function loadOpenEndsVariableOrder() {
+        try {
+            const raw = localStorage.getItem(OPENENDS_VARIABLE_ORDER_STORAGE_KEY);
+            if (!raw) return {};
+            const parsed = JSON.parse(raw);
+            return parsed && typeof parsed === "object" ? parsed : {};
+        } catch (e) {
+            return {};
+        }
+    }
+
+    function saveOpenEndsVariableOrder(allProjectsVariableOrder) {
+        try {
+            localStorage.setItem(
+                OPENENDS_VARIABLE_ORDER_STORAGE_KEY,
+                JSON.stringify(allProjectsVariableOrder || {})
+            );
+        } catch (e) {}
+    }
+
+    function getOpenEndsVariableOrderForProject(projectId) {
+        const key = String(projectId || "").trim();
+        if (!key) {
+            return [];
+        }
+        const all = loadOpenEndsVariableOrder();
+        const projectOrder = Array.isArray(all[key]) ? all[key] : [];
+        return projectOrder
+            .map((value) => String(value || "").trim())
+            .filter(Boolean);
+    }
+
     function clearScheduledOpenEndsGroupsRefresh() {
         if (openEndsGroupsRefreshInterval) {
             clearInterval(openEndsGroupsRefreshInterval);
@@ -166,10 +198,20 @@ var MANUAL_BFRIDS_SERVER_SYNC_TTL_MS =
         const rows = tbody.querySelectorAll("tr.k-master-row");
         const variableSelector = state.settings.variableSelector || "td:nth-child(5)";
         const groupByCode = {};
+        const orderedCodes = [];
+        const seenOrderedCodes = new Set();
         for (const row of rows) {
             const cell = row.querySelector(variableSelector);
             const text = (cell && (cell.textContent || cell.innerText || "").trim()) || "";
             const codes = parseVerifyVariableCodes(text);
+            for (const code of codes) {
+                const normalizedCode = String(code || "").trim();
+                if (!normalizedCode || seenOrderedCodes.has(normalizedCode)) {
+                    continue;
+                }
+                seenOrderedCodes.add(normalizedCode);
+                orderedCodes.push(normalizedCode);
+            }
             if (codes.length > 1) {
                 for (const code of codes) {
                     groupByCode[code] = codes.slice();
@@ -185,6 +227,15 @@ var MANUAL_BFRIDS_SERVER_SYNC_TTL_MS =
         if (previousSerialized !== nextSerialized) {
             all[projectId] = groupByCode;
             saveOpenEndsGroups(all);
+        }
+
+        const variableOrderAll = loadOpenEndsVariableOrder();
+        const previousOrder = Array.isArray(variableOrderAll[projectId]) ? variableOrderAll[projectId] : [];
+        const previousOrderSerialized = JSON.stringify(previousOrder);
+        const nextOrderSerialized = JSON.stringify(orderedCodes);
+        if (previousOrderSerialized !== nextOrderSerialized) {
+            variableOrderAll[projectId] = orderedCodes.slice();
+            saveOpenEndsVariableOrder(variableOrderAll);
         }
 
         ensureManualGroupButtonHooked();
