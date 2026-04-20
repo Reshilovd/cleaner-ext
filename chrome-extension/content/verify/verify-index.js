@@ -155,7 +155,6 @@
         if (normalized.length === 0) {
             return;
         }
-        addManualBfridsForProject(projectId, normalized);
         try {
             await sendManualBfridsToServer(projectId, normalized);
         } catch (error) {
@@ -167,7 +166,7 @@
             return;
         }
         console.info(
-            "[QGA] Добавлено bfrid в буфер ручной чистки для проекта",
+            "[QGA] Добавлено bfrid в ручную чистку для проекта",
             projectId,
             "кол-во:",
             normalized.length

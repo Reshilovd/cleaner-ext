@@ -1,5 +1,111 @@
 "use strict";
 
+    function makeVerifyModalHeaderResizable(modal) {
+        if (!(modal instanceof HTMLElement) || modal.dataset.qgaVerifyModalHeaderResizable === "1") {
+            return;
+        }
+
+        const header = modal.querySelector(".qga-verify-modal__header");
+        const bottomHandle = modal.querySelector(".qga-verify-modal__resize-bottom");
+        if (!(header instanceof HTMLElement)) {
+            return;
+        }
+
+        modal.dataset.qgaVerifyModalHeaderResizable = "1";
+        header.style.cursor = "ns-resize";
+
+        const clampModalHeight = (height, minHeightPx, maxHeightPx) => {
+            return Math.min(Math.max(minHeightPx, height), maxHeightPx);
+        };
+
+        const setupResize = (event, edge) => {
+            if (event.button !== 0) {
+                return;
+            }
+            if (event.target instanceof Element && event.target.closest(".qga-verify-modal__close")) {
+                return;
+            }
+
+            const minHeightPx = 140;
+            const startRect = modal.getBoundingClientRect();
+            const startHeight = startRect.height;
+            const startTop = startRect.top;
+            const startBottomOffset = Math.max(
+                0,
+                (window.innerHeight || document.documentElement.clientHeight || 0) - startRect.bottom
+            );
+            const startY = event.clientY;
+
+            const handleMouseMove = (moveEvent) => {
+                const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+                if (edge === "top") {
+                    // Ресайз сверху: фиксируем окно по нижней границе, увеличиваем/уменьшаем только высоту.
+                    modal.style.top = "auto";
+                    modal.style.bottom = startBottomOffset + "px";
+                    modal.style.height = startHeight + "px";
+                    const maxHeightPx = Math.max(minHeightPx, viewportHeight - startBottomOffset - 12);
+                    const delta = startY - moveEvent.clientY;
+                    const nextHeight = clampModalHeight(startHeight + delta, minHeightPx, maxHeightPx);
+                    modal.style.height = nextHeight + "px";
+                    moveEvent.preventDefault();
+                    return;
+                }
+
+                // Ресайз снизу: фиксируем верхнюю границу, меняем нижнюю.
+                modal.style.top = startTop + "px";
+                modal.style.bottom = "auto";
+                modal.style.height = startHeight + "px";
+                const maxHeightPx = Math.max(minHeightPx, viewportHeight - startTop - 12);
+                const delta = moveEvent.clientY - startY;
+                const nextHeight = clampModalHeight(startHeight + delta, minHeightPx, maxHeightPx);
+                modal.style.height = nextHeight + "px";
+                moveEvent.preventDefault();
+            };
+
+            const handleMouseUp = () => {
+                document.removeEventListener("mousemove", handleMouseMove);
+                document.removeEventListener("mouseup", handleMouseUp);
+            };
+
+            document.addEventListener("mousemove", handleMouseMove);
+            document.addEventListener("mouseup", handleMouseUp);
+            event.preventDefault();
+        };
+
+        header.addEventListener("mousedown", (event) => setupResize(event, "top"));
+        if (bottomHandle instanceof HTMLElement) {
+            bottomHandle.addEventListener("mousedown", (event) => setupResize(event, "bottom"));
+        }
+    }
+
+    function clearVerifyRowPostponeSelection(rowState) {
+        if (!rowState || !(rowState.gridRoot instanceof HTMLElement) || !(rowState.row instanceof HTMLTableRowElement)) {
+            return;
+        }
+
+        const { postponeIndex } = getVerifyHeaderIndexes(rowState.gridRoot);
+        if (postponeIndex < 0) {
+            return;
+        }
+
+        const cells = rowState.row.querySelectorAll("td[role='gridcell']");
+        const postponeCell = postponeIndex < cells.length ? cells[postponeIndex] : null;
+        const postponeCheckbox = postponeCell
+            ? postponeCell.querySelector("input[type='checkbox']")
+            : null;
+
+        if (!(postponeCheckbox instanceof HTMLInputElement) || !postponeCheckbox.checked) {
+            return;
+        }
+
+        postponeCheckbox.checked = false;
+        postponeCheckbox.dispatchEvent(
+            new Event("change", {
+                bubbles: true
+            })
+        );
+    }
+
     function getVerifyRespondentCandidatesTitle(respondentIds) {
         const uniqueCount = Array.isArray(respondentIds)
             ? new Set(
@@ -27,6 +133,7 @@
                     <ul class="qga-verify-modal__list"></ul>
                     <div class="qga-verify-modal__footer"></div>
                 </div>
+                <div class="qga-verify-modal__resize-bottom" aria-hidden="true"></div>
             `;
 
             const closeButton = modal.querySelector(".qga-verify-modal__close");
@@ -43,6 +150,7 @@
             });
 
             document.documentElement.appendChild(modal);
+            makeVerifyModalHeaderResizable(modal);
 
             const bodyEl = modal.querySelector(".qga-verify-modal__body");
             if (bodyEl) {
@@ -170,6 +278,7 @@
                     const id = manualCheckbox.dataset.respondentId;
                     if (!id) return;
                     if (manualCheckbox.checked) {
+                        clearVerifyRowPostponeSelection(rowState);
                         state.verifyPendingManualBfrids.add(id);
                     } else {
                         state.verifyPendingManualBfrids.delete(id);
@@ -201,6 +310,7 @@
                 <div class="qga-verify-modal__body">
                     <ul class="qga-verify-modal__list"></ul>
                 </div>
+                <div class="qga-verify-modal__resize-bottom" aria-hidden="true"></div>
             `;
 
             const closeButton = modal.querySelector(".qga-verify-modal__close");
@@ -217,6 +327,7 @@
             });
 
             document.documentElement.appendChild(modal);
+            makeVerifyModalHeaderResizable(modal);
 
             const bodyEl = modal.querySelector(".qga-verify-modal__body");
             if (bodyEl) {
@@ -332,6 +443,7 @@
                         const id = manualCheckbox.dataset.respondentId;
                         if (!id) return;
                         if (manualCheckbox.checked) {
+                            clearVerifyRowPostponeSelection(rowState);
                             state.verifyPendingManualBfrids.add(id);
                         } else {
                             state.verifyPendingManualBfrids.delete(id);

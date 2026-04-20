@@ -97,3 +97,11 @@
 2. Включите **Режим разработчика**.
 3. Нажмите **Загрузить распакованное расширение**.
 4. Укажите папку `chrome-extension` этого репозитория.
+
+---
+
+## Публикация в Chrome Web Store
+
+- Тексты для карточки расширения: `docs/CHROME_WEB_STORE_LISTING.md`
+- Privacy Policy: `docs/PRIVACY_POLICY.md`
+- Чеклист публикации: `docs/PUBLISHING_CHECKLIST.md`

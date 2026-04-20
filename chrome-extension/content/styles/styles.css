@@ -232,7 +232,7 @@
                 right: 12px;
                 bottom: 12px;
                 width: 340px;
-                max-height: 65vh;
+                max-height: 98vh;
                 z-index: 2147483647;
                 background: #fff;
                 color: #1f2937;
@@ -270,6 +270,8 @@
                 color: #e5e7eb;
             }
             .qga-verify-modal__body {
+                flex: 1 1 auto;
+                min-height: 0;
                 padding: 6px 8px;
                 overflow: auto;
                 --qga-scrollbar-thumb: rgba(156, 163, 175, 0.25);
@@ -377,6 +379,12 @@
                 color: #374151;
                 user-select: none;
                 -webkit-user-select: none;
+            }
+            .qga-verify-modal__resize-bottom {
+                height: 8px;
+                cursor: ns-resize;
+                flex: 0 0 auto;
+                background: transparent;
             }
             .qga-verify-modal--tech-defect .qga-verify-modal__body,
             .qga-verify-modal--tech-defect .qga-verify-modal__footer {

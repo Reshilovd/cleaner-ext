@@ -564,7 +564,7 @@ var MANUAL_BFRIDS_SERVER_SYNC_TTL_MS =
     /**
      * Синхронизирует локальное хранилище (manualApiState и manualBfridsState)
      * с текущим содержимым поля ручной чистки (#Bfrids).
-     * Вызывается при ручном удалении/изменении айдишек в textarea.
+     * Вызывается только при явном сохранении формы.
      */
     function syncManualBfridsFromTextarea(projectId) {
         if (!projectId) {
@@ -604,10 +604,9 @@ var MANUAL_BFRIDS_SERVER_SYNC_TTL_MS =
             return;
         }
         textarea.dataset.qgaBfridsSyncAttached = "1";
-        const sync = () => syncManualBfridsFromTextarea(projectId);
-        textarea.addEventListener("input", sync);
-        textarea.addEventListener("blur", sync);
-        textarea.addEventListener("change", sync);
+        textarea.addEventListener("input", () => {
+            updateManualBfridsCounter(projectId, parseManualBfridsValue(textarea.value || ""));
+        });
     }
 
     function setupManualPageIntegration() {
@@ -1033,28 +1032,35 @@ var MANUAL_BFRIDS_SERVER_SYNC_TTL_MS =
                 }
             };
 
-            const loadPersistedManualState = async (fallbackToken, fallbackBfridsArray) => {
+            const loadPersistedManualState = async (fallbackToken) => {
                 const snapshot = await loadActualManualStateSnapshot(projectId);
                 const refreshedBfrids =
                     snapshot && snapshot.hasBfridsField
                         ? snapshot.bfrids.slice()
                         : await loadActualManualBfridsFromApi(projectId);
+                const normalizedRefreshedBfrids = Array.isArray(refreshedBfrids)
+                    ? mergeManualBfridsLists([], refreshedBfrids)
+                    : mergeManualBfridsLists([], existingBfrids);
+                const confirmedIds = new Set(
+                    Array.isArray(refreshedBfrids)
+                        ? normalizedRefreshedBfrids
+                        : []
+                );
+                const isCurrentAddConfirmed = currentNewBfrids.every((id) => confirmedIds.has(String(id).trim()));
 
                 return {
                     token:
                         (snapshot && typeof snapshot.token === "string" ? snapshot.token : "") ||
                         fallbackToken ||
                         "",
-                    bfrids:
-                        Array.isArray(refreshedBfrids) && refreshedBfrids.length >= fallbackBfridsArray.length
-                            ? mergeManualBfridsLists([], refreshedBfrids)
-                            : mergeManualBfridsLists([], fallbackBfridsArray)
+                    bfrids: normalizedRefreshedBfrids,
+                    isCurrentAddConfirmed
                 };
             };
 
             await postManualBfrids(mergedArray, verificationToken);
 
-            const persistedState = await loadPersistedManualState(verificationToken, mergedArray);
+            const persistedState = await loadPersistedManualState(verificationToken);
             const finalBfridsArray = persistedState.bfrids.slice();
             const finalToken = persistedState.token;
             const finalBfrids = finalBfridsArray.join("\n");
@@ -1074,6 +1080,14 @@ var MANUAL_BFRIDS_SERVER_SYNC_TTL_MS =
                 saveManualBfridsState(manualBfridsState);
             } catch (updateError) {
                 console.warn("[QGA] Не удалось обновить локальный снимок API ручной чистки:", updateError);
+            }
+
+            if (!persistedState.isCurrentAddConfirmed) {
+                console.warn(
+                    "[QGA] Сервер не подтвердил сохранение всех добавленных bfrid в ручной чистке:",
+                    projectId,
+                    currentNewBfrids
+                );
             }
 
             console.info(

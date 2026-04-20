@@ -60,7 +60,11 @@
                     return;
                 }
 
-                const rowState = getVerifyRowIncorrectPostpone(gridRoot, row);
+                const rowState = {
+                    gridRoot,
+                    row,
+                    ...getVerifyRowIncorrectPostpone(gridRoot, row)
+                };
 
                 try {
                     const ok = await ensureVerifyRespondentIndexLoaded(button);

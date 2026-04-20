@@ -1,15 +1,14 @@
 {
   "manifest_version": 3,
   "name": "Cleaner Assistant",
-  "description": "Группировка OpenEnds, проверка OPENEND-OB с ручной чисткой, перенос данных проекта из Pyrus в Cleaner, фильтры проектов.",
-  "version": "1.0.0",
+  "description": "Внутренний инструмент для Cleaner и Pyrus: OpenEnds, VerifyMain, ручная чистка и перенос данных проекта.",
+  "version": "1.0.1",
   "permissions": [
     "storage",
     "scripting"
   ],
   "host_permissions": [
     "https://clr.env7.biz/*",
-    "http://clr.env7.biz/*",
     "https://pyrus.com/*",
     "https://www.pyrus.com/*"
   ],
@@ -28,7 +27,6 @@
     {
       "matches": [
         "https://clr.env7.biz/lk*",
-        "http://clr.env7.biz/lk*",
         "https://pyrus.com/t*",
         "https://www.pyrus.com/t*"
       ],
@@ -81,7 +79,7 @@
         "icons/manual.png",
         "icons/table.png"
       ],
-      "matches": ["https://clr.env7.biz/*", "http://clr.env7.biz/*"]
+      "matches": ["https://clr.env7.biz/*"]
     }
   ]
 }
