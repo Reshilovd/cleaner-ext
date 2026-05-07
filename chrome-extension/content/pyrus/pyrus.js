@@ -52,11 +52,21 @@
 
         const referenceNote = anchorControl.closest(".formFieldNote") || anchorControl.closest(".formFieldButtonWrapper");
         const insertionAnchor = referenceNote || anchorControl;
+        const cleanerControl = findPyrusCleanerControl();
+        const cleanerReferenceNote = cleanerControl
+            ? cleanerControl.closest(".formFieldNote") || cleanerControl.closest(".formFieldButtonWrapper")
+            : null;
+        const cleanerInsertionAnchor = cleanerReferenceNote || cleanerControl;
+        const insertionMode = cleanerInsertionAnchor ? "beforebegin" : "afterend";
+        const finalInsertionAnchor = cleanerInsertionAnchor || insertionAnchor;
 
         const existingButton = document.getElementById(PYRUS_QUICK_FILL_BUTTON_ID);
         if (existingButton) {
             const existingWrapper = existingButton.closest(`.${PYRUS_QUICK_FILL_WRAPPER_CLASS}`) || existingButton;
-            if (insertionAnchor.nextElementSibling === existingWrapper) {
+            if (
+                (insertionMode === "beforebegin" && finalInsertionAnchor && finalInsertionAnchor.previousElementSibling === existingWrapper) ||
+                (insertionMode === "afterend" && finalInsertionAnchor && finalInsertionAnchor.nextElementSibling === existingWrapper)
+            ) {
                 return true;
             }
         }
@@ -71,9 +81,9 @@
 
         const buttonContainer = wrapper.querySelector(".formFieldNoteControl") || wrapper;
         buttonContainer.appendChild(button);
-        insertionAnchor.insertAdjacentElement("afterend", wrapper);
+        finalInsertionAnchor.insertAdjacentElement(insertionMode, wrapper);
 
-        console.info("[QGA] Кнопка В CleanerUI: добавлена рядом с кнопкой Новый клиент");
+        console.info("[QGA] Кнопка В CleanerUI: добавлена перед кнопкой Чистилка");
         return true;
     }
 
@@ -124,8 +134,6 @@
             if (style) {
                 outer.setAttribute("style", style);
             }
-            outer.style.flex = "0 0 auto";
-            outer.style.width = "fit-content";
 
             const content = document.createElement("div");
             content.className = "formFieldContent formFieldContent_small formFieldNote__content";
@@ -177,6 +185,16 @@
         const text = normalizeSearchText(node.textContent || "");
         const normalizedMarker = normalizeSearchText(marker);
         return Boolean(text) && Boolean(normalizedMarker) && text.includes(normalizedMarker);
+    }
+
+    function findPyrusCleanerControl() {
+        const controls = Array.from(document.querySelectorAll("button, a"))
+            .filter((node) => isElementVisible(node));
+
+        return controls.find((node) => {
+            const text = normalizeSearchText(node.textContent || "");
+            return text === "чистилка";
+        }) || null;
     }
 
     function removeInjectedPyrusQuickFillButtons() {
