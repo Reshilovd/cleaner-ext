@@ -67,6 +67,7 @@
                 (insertionMode === "beforebegin" && finalInsertionAnchor && finalInsertionAnchor.previousElementSibling === existingWrapper) ||
                 (insertionMode === "afterend" && finalInsertionAnchor && finalInsertionAnchor.nextElementSibling === existingWrapper)
             ) {
+                enhancePyrusButtonsLayout();
                 return true;
             }
         }
@@ -82,6 +83,7 @@
         const buttonContainer = wrapper.querySelector(".formFieldNoteControl") || wrapper;
         buttonContainer.appendChild(button);
         finalInsertionAnchor.insertAdjacentElement(insertionMode, wrapper);
+        enhancePyrusButtonsLayout();
 
         console.info("[QGA] Кнопка В CleanerUI: добавлена перед кнопкой Чистилка");
         return true;
@@ -95,6 +97,7 @@
         window.addEventListener("hashchange", () => {
             removeLegacyPyrusCopyButton();
             ensurePyrusQuickFillLinks();
+            enhancePyrusButtonsLayout();
         });
         state.pyrusHashListenerAttached = true;
     }
@@ -209,6 +212,303 @@
                 node.remove();
             }
         }
+    }
+
+    function enhancePyrusButtonsLayout() {
+        const buttonsHost = findPyrusButtonsHost();
+        if (!buttonsHost) {
+            return false;
+        }
+
+        injectPyrusButtonsLayoutStyles();
+
+        const buttonWrappers = collectPyrusButtonWrappers(buttonsHost);
+        if (buttonWrappers.length === 0) {
+            return false;
+        }
+
+        let board = buttonsHost.querySelector(".qga-pyrus-button-board");
+        if (!board) {
+            board = createPyrusButtonsBoard();
+            buttonsHost.insertBefore(board, buttonWrappers[0]);
+        }
+
+        const managerGrid = board.querySelector("[data-qga-role='managers']");
+        const devGrid = board.querySelector("[data-qga-role='developers']");
+        if (!managerGrid || !devGrid) {
+            return false;
+        }
+
+        const managerOrder = [
+            "заявка на рекрут",
+            "считалка",
+            "выгрузка базы",
+            "добавить подзадачу",
+            "квотная",
+            "новый клиент"
+        ];
+        const developerOrder = [
+            "генерилка",
+            "inspector bot",
+            "сетап чистилки",
+            "чистилка",
+            "сетап рекоделки"
+        ];
+
+        const managerMap = new Map();
+        const developerMap = new Map();
+        const unknownDeveloperItems = [];
+
+        for (const wrapper of buttonWrappers) {
+            const label = getPyrusButtonWrapperLabel(wrapper);
+            if (!label) {
+                continue;
+            }
+
+            const managerKey = managerOrder.find((item) => label.includes(item));
+            if (managerKey) {
+                if (!managerMap.has(managerKey)) {
+                    managerMap.set(managerKey, []);
+                }
+                managerMap.get(managerKey).push(wrapper);
+                continue;
+            }
+
+            const developerKey = developerOrder.find((item) => label.includes(item));
+            if (developerKey) {
+                if (!developerMap.has(developerKey)) {
+                    developerMap.set(developerKey, []);
+                }
+                developerMap.get(developerKey).push(wrapper);
+                continue;
+            }
+
+            unknownDeveloperItems.push(wrapper);
+        }
+
+        for (const key of managerOrder) {
+            const items = managerMap.get(key) || [];
+            for (const item of items) {
+                managerGrid.appendChild(item);
+            }
+        }
+
+        for (const key of developerOrder) {
+            const items = developerMap.get(key) || [];
+            for (const item of items) {
+                devGrid.appendChild(item);
+            }
+        }
+
+        for (const item of unknownDeveloperItems) {
+            devGrid.appendChild(item);
+        }
+
+        const newClientItems = findPyrusButtonWrappersByLabel("новый клиент");
+        for (const item of newClientItems) {
+            item.classList.add("qga-pyrus-button-wrapper--new-client");
+            managerGrid.appendChild(item);
+        }
+
+        return true;
+    }
+
+    function findPyrusButtonsHost() {
+        const controls = Array.from(document.querySelectorAll("button, a"))
+            .filter((node) => isElementVisible(node));
+        const markers = [
+            "заявка на рекрут",
+            "считалка",
+            "новый клиент",
+            "выгрузка базы",
+            "квотная",
+            "чистилка",
+            "сетап чистилки",
+            "inspector bot"
+        ];
+
+        for (const control of controls) {
+            const text = normalizeSearchText(control.textContent || "");
+            if (!markers.some((marker) => text.includes(marker))) {
+                continue;
+            }
+
+            const wrapper = control.closest(".formFieldNote, .formFieldButtonWrapper");
+            if (wrapper && wrapper.parentElement) {
+                return wrapper.parentElement;
+            }
+        }
+
+        return null;
+    }
+
+    function collectPyrusButtonWrappers(buttonsHost) {
+        if (!buttonsHost) {
+            return [];
+        }
+
+        const wrappers = Array.from(buttonsHost.querySelectorAll(".formFieldNote, .formFieldButtonWrapper"));
+        return wrappers.filter((wrapper) => {
+            if (!wrapper || wrapper.closest(".qga-pyrus-button-board")) {
+                return false;
+            }
+            if (wrapper.parentElement !== buttonsHost) {
+                return false;
+            }
+            const control = wrapper.querySelector("a, button");
+            if (!control || !isElementVisible(control)) {
+                return false;
+            }
+            const text = normalizeSearchText(control.textContent || "");
+            return isPyrusActionButtonLabel(text);
+        });
+    }
+
+    function isPyrusActionButtonLabel(text) {
+        if (!text) {
+            return false;
+        }
+
+        const markers = [
+            "заявка на рекрут",
+            "считалка",
+            "новый клиент",
+            "выгрузка базы",
+            "квотная",
+            "чистилка",
+            "сетап",
+            "inspector bot",
+            "генерилка",
+            "добавить подзадачу"
+        ];
+        return markers.some((marker) => text.includes(marker));
+    }
+
+    function findPyrusButtonWrappersByLabel(labelPart) {
+        const target = normalizeSearchText(labelPart || "");
+        if (!target) {
+            return [];
+        }
+
+        const wrappers = Array.from(document.querySelectorAll(".formFieldNote, .formFieldButtonWrapper"));
+        return wrappers.filter((wrapper) => {
+            if (!wrapper || wrapper.closest(".qga-pyrus-button-board")) {
+                return false;
+            }
+            const control = wrapper.querySelector("a, button");
+            if (!control || !isElementVisible(control)) {
+                return false;
+            }
+            const text = normalizeSearchText(control.textContent || "");
+            return text.includes(target);
+        });
+    }
+
+    function getPyrusButtonWrapperLabel(wrapper) {
+        if (!wrapper) {
+            return "";
+        }
+        const control = wrapper.querySelector("a, button");
+        if (!control) {
+            return "";
+        }
+        return normalizeSearchText(control.textContent || "");
+    }
+
+    function createPyrusButtonsBoard() {
+        const board = document.createElement("div");
+        board.className = "qga-pyrus-button-board";
+
+        const managersSection = createPyrusButtonsSection("Менеджеры", "managers");
+        const developersSection = createPyrusButtonsSection("Программисты", "developers");
+
+        board.appendChild(developersSection);
+        board.appendChild(managersSection);
+        return board;
+    }
+
+    function createPyrusButtonsSection(title, role) {
+        const section = document.createElement("section");
+        section.className = "qga-pyrus-button-section";
+
+        const header = document.createElement("div");
+        header.className = "qga-pyrus-button-section__title";
+        header.textContent = title;
+
+        const grid = document.createElement("div");
+        grid.className = "qga-pyrus-button-grid";
+        grid.setAttribute("data-qga-role", role);
+
+        section.appendChild(header);
+        section.appendChild(grid);
+        return section;
+    }
+
+    function injectPyrusButtonsLayoutStyles() {
+        if (document.getElementById("qga-pyrus-buttons-layout-style")) {
+            return;
+        }
+
+        const style = document.createElement("style");
+        style.id = "qga-pyrus-buttons-layout-style";
+        style.textContent = `
+.qga-pyrus-button-board {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+    gap: 10px;
+    margin-bottom: 4px;
+    width: 100%;
+    background: #ffffff;
+}
+.qga-pyrus-button-section {
+    border: 0;
+    border-radius: 0;
+    padding: 8px 8px 6px;
+    background: transparent;
+    width: 100%;
+}
+.qga-pyrus-button-section + .qga-pyrus-button-section {
+    border-left: 1px solid #e5e7eb;
+    padding-left: 12px;
+}
+.qga-pyrus-button-section__title {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: #64748b;
+    margin-bottom: 7px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid #eef2f7;
+}
+.qga-pyrus-button-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 0;
+}
+.qga-pyrus-button-grid .formFieldNote,
+.qga-pyrus-button-grid .formFieldButtonWrapper {
+    margin: 0 !important;
+}
+.qga-pyrus-button-grid .qga-pyrus-button-wrapper--new-client {
+    grid-column: auto;
+}
+.qga-pyrus-button-grid .formFieldNoteButton,
+.qga-pyrus-button-grid .linkButton,
+.qga-pyrus-button-grid a.linkButton,
+.qga-pyrus-button-grid button {
+    width: 100% !important;
+    min-height: 33px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.qga-pyrus-button-grid .formFieldNoteButton_text {
+    max-width: 100%;
+}
+        `.trim();
+        document.head.appendChild(style);
     }
 
 
