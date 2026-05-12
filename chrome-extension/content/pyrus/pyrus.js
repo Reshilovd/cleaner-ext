@@ -459,7 +459,8 @@
     gap: 10px;
     margin-bottom: 4px;
     width: 100%;
-    background: #ffffff;
+    background: transparent;
+    color: var(--color-text-main, var(--color-text-primary, inherit));
 }
 .qga-pyrus-button-section {
     border: 0;
@@ -469,7 +470,7 @@
     width: 100%;
 }
 .qga-pyrus-button-section + .qga-pyrus-button-section {
-    border-left: 1px solid #e5e7eb;
+    border-left: 1px solid var(--color-separator, var(--color-border, #e5e7eb));
     padding-left: 12px;
 }
 .qga-pyrus-button-section__title {
@@ -477,10 +478,10 @@
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.03em;
-    color: #64748b;
+    color: var(--color-text-secondary, var(--color-text-main, #64748b));
     margin-bottom: 7px;
     padding-bottom: 4px;
-    border-bottom: 1px solid #eef2f7;
+    border-bottom: 1px solid var(--color-separator, var(--color-border, #eef2f7));
 }
 .qga-pyrus-button-grid {
     display: grid;
