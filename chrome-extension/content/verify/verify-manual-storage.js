@@ -497,17 +497,6 @@ var MANUAL_BFRIDS_SERVER_SYNC_TTL_MS =
         console.info("[QGA] Локально сохранены некорректные ID (Проверить страницу), добавлено:", collected.size, "всего:", merged.size);
     }
 
-    function addManualBfridsForProject(projectId, bfrids) {
-        if (!projectId || !Array.isArray(bfrids) || bfrids.length === 0) {
-            return;
-        }
-        const key = String(projectId);
-        const currentPending = Array.isArray(manualBfridsState[key]) ? manualBfridsState[key] : [];
-        const merged = mergeManualBfridsLists(currentPending, bfrids);
-        manualBfridsState[key] = merged.slice();
-        saveManualBfridsState(manualBfridsState);
-    }
-
     function consumeManualBfridsForProject(projectId) {
         if (!projectId) {
             return [];
@@ -579,15 +568,6 @@ var MANUAL_BFRIDS_SERVER_SYNC_TTL_MS =
 
         return merged;
     }
-
-    /** Есть ли сохранённый верификационный токен для ручной чистки по проекту (получен после открытия вкладки «Ручная чистка» и сохранения). */
-    function hasVerificationTokenForProject(projectId) {
-        if (!projectId) return false;
-        const key = String(projectId);
-        const entry = manualApiState && manualApiState[key];
-        return !!(entry && typeof entry.token === "string" && entry.token.trim() !== "");
-    }
-
 
     /**
      * Записывает один и тот же список bfrid в оба хранилища (manualBfridsState и manualApiState.bfrids),

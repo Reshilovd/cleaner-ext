@@ -152,10 +152,6 @@
 
             if (message.type === "toggle_panel") {
                 togglePanelVisibility();
-            } else if (message.type === "show_panel") {
-                showPanel();
-            } else if (message.type === "hide_panel") {
-                hidePanel();
             }
         });
     }
@@ -229,7 +225,6 @@
 
     function initCleanerProjectsMode() {
         waitForBody(() => {
-            removeCleanerFillButtonIfExists();
             setupCleanerProjectsAuthorFilter();
             setupCleanerProjectsFavorites();
             setupCleanerProjectsFavoritesOnlyToggle();
@@ -238,18 +233,4 @@
                 runCleanerAutoFillFlow();
             }
         });
-    }
-
-    function removeCleanerFillButtonIfExists() {
-        const button = document.querySelector("#qga-cleaner-fill");
-        if (!button) {
-            return;
-        }
-
-        const wrapper = button.parentElement;
-        button.remove();
-
-        if (wrapper && wrapper.childElementCount === 0) {
-            wrapper.remove();
-        }
     }

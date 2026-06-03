@@ -26,12 +26,6 @@
         } catch (_error) {}
     }
 
-    function clearVerifyModalStoredMaxHeightPx() {
-        try {
-            localStorage.removeItem(VERIFY_MODAL_MAX_HEIGHT_STORAGE_KEY);
-        } catch (_error) {}
-    }
-
     function getVerifyModalEffectiveMaxHeightPx() {
         const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
         const defaultMax = getVerifyModalDefaultMaxHeightPx();
