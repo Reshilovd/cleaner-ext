@@ -8,7 +8,7 @@
 
 | Сайт / страница | Режим |
 |-----------------|-------|
-| `clr.env7.biz/lk/Project/Edit/<id>#openends` | Панель группировки OpenEnds, shortcut в VerifyMain, penalty-toggle для групп |
+| `clr.env7.biz/lk/Project/Edit/<id>#openends` | Панель группировки OpenEnds, shortcut в VerifyMain |
 | `clr.env7.biz/lk/Project/Edit/<id>#options`, `#matrix`, `#openends`, `#multiaccounts`, `#manual` | Виджет статистики по проекту на странице редактирования |
 | `clr.env7.biz/lk/openends2/verifymain` | VerifyMain: respondent lookup, подсветка строк, ручная чистка |
 | `clr.env7.biz/lk`, `clr.env7.biz/lk/projects` | Автозаполнение формы проекта, фильтр по авторам, избранное |
@@ -30,9 +30,7 @@
 ### 2. Виджеты на Project Edit
 
 - На вкладках `#options`, `#matrix`, `#openends`, `#multiaccounts`, `#manual` добавляется виджет статистики с процентом и breakdown по причинам.
-- На вкладке `#openends` добавляется penalty-toggle для строк групп.
 - На вкладке `#manual` расширение синхронизирует локальный список `Bfrids` с textarea и показывает рядом с заголовком счётчик уникальных ID.
-- Для penalty-toggle используется bridge в `MAIN world`, потому что часть состояния живёт внутри страницы/Kendo-grid, а не в isolated content script.
 
 ### 3. VerifyMain
 
@@ -73,7 +71,7 @@
 ## Файлы
 
 - `chrome-extension/manifest.json` — манифест расширения (Manifest V3).
-- `chrome-extension/background.js` — service worker: клик по action, открытие вкладок, инъекция penalty bridge, фоновый разбор XLSX.
+- `chrome-extension/background.js` — service worker: клик по action, открытие вкладок, фоновый разбор XLSX.
 - `chrome-extension/content/base/` — глобалы, маршрутизация по страницам, bootstrap и общий init.
 - `chrome-extension/content/openends/` — панель группировки OpenEnds и bulk-операции.
 - `chrome-extension/content/verify/` — VerifyMain и виджеты страницы Project Edit.

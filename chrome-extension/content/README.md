@@ -12,10 +12,10 @@
 - `pyrus` — извлечение payload из Pyrus, transport между страницами и autofill-flow в Cleaner.
 - `storage` — сохранение настроек панели OpenEnds.
 - `styles` — CSS для UI расширения.
-- `verify` — VerifyMain и часть логики страницы `Project/Edit`: respondent lookup, rating/manual state, синхронизация ручной чистки, модалки, project-edit stats и penalty-toggle.
+- `verify` — VerifyMain и часть логики страницы `Project/Edit`: respondent lookup, rating/manual state, синхронизация ручной чистки, модалки и project-edit stats.
 - `openends` — панель группировки OpenEnds, сканирование грида, bulk-операции и защита bulk-проходов от зацикливания.
 
 Важно:
 
-- Это только content-слой. Часть тяжёлой логики, например фоновый разбор XLSX и инъекция bridge-скрипта, вынесена в `chrome-extension/background.js`.
+- Это только content-слой. Часть тяжёлой логики, например фоновый разбор XLSX, вынесена в `chrome-extension/background.js`.
 - Модули из `verify/`, `openends/`, `pyrus/` и `cleaner-projects/` опираются на общий `state` из `base/globals.js`.

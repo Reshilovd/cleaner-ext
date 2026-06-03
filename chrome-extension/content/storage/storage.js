@@ -23,7 +23,7 @@
                 state.processedKeys = new Set(stored.processedKeys);
             }
         } catch (error) {
-            console.warn("[QGA] РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РіСЂСѓР·РёС‚СЊ СЃРѕСЃС‚РѕСЏРЅРёРµ:", error);
+            console.warn("[QGA] Не удалось загрузить состояние:", error);
         }
     }
 

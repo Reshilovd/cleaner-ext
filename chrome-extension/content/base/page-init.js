@@ -21,6 +21,41 @@
         }
     }
 
+    function cleanupLegacyProjectEditPenaltyArtifacts() {
+        document
+            .querySelectorAll(
+                ".qga-project-edit-penalty-header, .qga-project-edit-penalty-cell, .qga-project-edit-penalty-col, [data-qga-penalty-dom='1']"
+            )
+            .forEach((node) => node.remove());
+
+        const gridRoot = document.querySelector("#gridOpenEnds");
+        if (!(gridRoot instanceof HTMLElement) || typeof window.jQuery !== "function") {
+            return;
+        }
+
+        let grid = null;
+        try {
+            grid = window.jQuery(gridRoot).data("kendoGrid") || null;
+        } catch (error) {
+            return;
+        }
+
+        if (!grid || !grid.options || !Array.isArray(grid.options.columns) || typeof grid.setOptions !== "function") {
+            return;
+        }
+
+        const columns = grid.options.columns.filter((column) => {
+            const field = String((column && column.field) || "")
+                .trim()
+                .toLowerCase();
+            return field !== "qgpenalty";
+        });
+
+        if (columns.length !== grid.options.columns.length) {
+            grid.setOptions({ columns });
+        }
+    }
+
     function isOpenEndsHash() {
         const hash = String(window.location.hash || "").trim().toLowerCase();
         if (hash === "#openends") {
@@ -47,9 +82,7 @@
             if (typeof setupProjectEditFavoriteToggle === "function") {
                 setupProjectEditFavoriteToggle();
             }
-            if (typeof setupProjectEditPenaltyToggle === "function") {
-                setupProjectEditPenaltyToggle();
-            }
+            cleanupLegacyProjectEditPenaltyArtifacts();
             setupManualPageIntegration();
             setupOpenEndsVerifyShortcut();
             const scheduleCollectGroups = () => {
