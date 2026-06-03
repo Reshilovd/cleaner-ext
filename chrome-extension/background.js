@@ -13,7 +13,10 @@ let qgaXlsxLibraryLoaded = false;
 let qgaXlsxLibraryLoadError = null;
 
 try {
-    importScripts(chrome.runtime.getURL("xlsx.full.min.js"));
+    importScripts(
+        chrome.runtime.getURL("xlsx.full.min.js"),
+        chrome.runtime.getURL("content/shared/verify-keys.js")
+    );
     qgaXlsxLibraryLoaded = typeof XLSX !== "undefined" && typeof XLSX.read === "function";
     if (!qgaXlsxLibraryLoaded) {
         qgaXlsxLibraryLoadError = new Error("XLSX global is unavailable after importScripts.");
@@ -32,20 +35,6 @@ function ensureQgaXlsxLibraryLoaded() {
         console.error("[QGA] XLSX library is unavailable in background:", qgaXlsxLibraryLoadError);
     }
     return false;
-}
-
-function buildVerifyQuestionValueKey(questionCode, valueText) {
-    const q = String(questionCode || "").trim();
-    const v = String(valueText || "")
-        .replace(/\s+/g, " ")
-        .trim();
-    return `${q}||${v}`;
-}
-
-function buildVerifyValueOnlyKey(valueText) {
-    return String(valueText || "")
-        .replace(/\s+/g, " ")
-        .trim();
 }
 
 function parseOpenEndsFromXlsxInBackground(arrayBuffer) {

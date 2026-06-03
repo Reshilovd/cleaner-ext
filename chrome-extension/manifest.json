@@ -41,6 +41,7 @@
         "content/base/openends-shortcut.js",
         "content/common/dom-utils.js",
         "content/common/common-utils.js",
+        "content/shared/verify-keys.js",
         "content/cleaner-projects/cleaner-projects-author-filter.js",
         "content/cleaner-projects/cleaner-projects-favorites.js",
         "content/pyrus/pyrus.js",

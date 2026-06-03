@@ -531,15 +531,3 @@
             control.click();
         }
     }
-
-    function clamp(value, min, max) {
-        return Math.min(max, Math.max(min, value));
-    }
-
-    function clampInt(value, min, max, fallback) {
-        if (!Number.isFinite(value)) {
-            return fallback;
-        }
-        const intValue = Math.round(value);
-        return Math.min(max, Math.max(min, intValue));
-    }

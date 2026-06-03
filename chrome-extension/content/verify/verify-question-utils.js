@@ -1,17 +1,19 @@
 "use strict";
 
-    function buildVerifyQuestionValueKey(questionCode, valueText) {
-        const q = String(questionCode || "").trim();
-        const v = String(valueText || "")
-            .replace(/\s+/g, " ")
-            .trim();
-        return `${q}||${v}`;
-    }
-
-    function buildVerifyValueOnlyKey(valueText) {
-        return String(valueText || "")
-            .replace(/\s+/g, " ")
-            .trim();
+    if (typeof buildVerifyQuestionValueKey !== "function" || typeof buildVerifyValueOnlyKey !== "function") {
+        const globalRef = typeof globalThis !== "undefined" ? globalThis : window;
+        globalRef.buildVerifyQuestionValueKey = function buildVerifyQuestionValueKey(questionCode, valueText) {
+            const q = String(questionCode || "").trim();
+            const v = String(valueText || "")
+                .replace(/\s+/g, " ")
+                .trim();
+            return `${q}||${v}`;
+        };
+        globalRef.buildVerifyValueOnlyKey = function buildVerifyValueOnlyKey(valueText) {
+            return String(valueText || "")
+                .replace(/\s+/g, " ")
+                .trim();
+        };
     }
 
     function getVerifyCodesForContext(context) {

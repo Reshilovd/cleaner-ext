@@ -139,6 +139,86 @@
         modal.style.maxHeight = getVerifyModalEffectiveMaxHeightPx() + "px";
     }
 
+    function hideVerifyModal(modal) {
+        modal.style.display = "none";
+    }
+
+    function attachVerifyModalCloseHandlers(modal) {
+        if (!(modal instanceof HTMLElement)) {
+            return;
+        }
+
+        const closeButton = modal.querySelector(".qga-verify-modal__close");
+        if (closeButton && closeButton.dataset.qgaVerifyModalCloseBound !== "1") {
+            closeButton.dataset.qgaVerifyModalCloseBound = "1";
+            closeButton.addEventListener("click", () => {
+                hideVerifyModal(modal);
+            });
+        }
+
+        if (modal.dataset.qgaVerifyModalOutsideCloseBound !== "1") {
+            modal.dataset.qgaVerifyModalOutsideCloseBound = "1";
+            document.addEventListener("click", function closeOnClickOutside(e) {
+                if (modal.style.display !== "flex") {
+                    return;
+                }
+                if (modal.contains(e.target)) {
+                    return;
+                }
+                hideVerifyModal(modal);
+            });
+        }
+    }
+
+    function attachVerifyModalBodyScrollbarHover(bodyEl) {
+        if (!(bodyEl instanceof HTMLElement) || bodyEl.dataset.qgaVerifyModalScrollbarHover === "1") {
+            return;
+        }
+
+        bodyEl.dataset.qgaVerifyModalScrollbarHover = "1";
+        const scrollbarZone = 20;
+        bodyEl.addEventListener("mousemove", (e) => {
+            const rect = bodyEl.getBoundingClientRect();
+            const isNearScrollbar = (rect.right - e.clientX) <= scrollbarZone;
+            bodyEl.classList.toggle("qga-verify-modal__body--scrollbar-hover", isNearScrollbar);
+        });
+        bodyEl.addEventListener("mouseleave", () => {
+            bodyEl.classList.remove("qga-verify-modal__body--scrollbar-hover");
+        });
+    }
+
+    function ensureVerifyModalElement(options) {
+        const config = options && typeof options === "object" ? options : {};
+        const withFooter = Boolean(config.withFooter);
+
+        let modal = document.querySelector(".qga-verify-modal");
+        if (!modal) {
+            modal = document.createElement("aside");
+            modal.className = "qga-verify-modal";
+            modal.innerHTML = `
+                <div class="qga-verify-modal__header">
+                    <div class="qga-verify-modal__title"></div>
+                    <button type="button" class="qga-verify-modal__close" aria-label="Закрыть">×</button>
+                </div>
+                <div class="qga-verify-modal__body">
+                    <ul class="qga-verify-modal__list"></ul>
+                    ${withFooter ? '<div class="qga-verify-modal__footer"></div>' : ""}
+                </div>
+            `;
+
+            document.documentElement.appendChild(modal);
+            makeVerifyModalHeaderResizable(modal);
+        }
+
+        attachVerifyModalCloseHandlers(modal);
+
+        if (config.withBodyScrollbarHover) {
+            attachVerifyModalBodyScrollbarHover(modal.querySelector(".qga-verify-modal__body"));
+        }
+
+        return modal;
+    }
+
     function clearVerifyRowPostponeSelection(rowState) {
         if (!rowState || !(rowState.gridRoot instanceof HTMLElement) || !(rowState.row instanceof HTMLTableRowElement)) {
             return;
@@ -315,36 +395,7 @@
     }
 
     function showVerifyModalInfoMessage(title, message) {
-        let modal = document.querySelector(".qga-verify-modal");
-        if (!modal) {
-            modal = document.createElement("aside");
-            modal.className = "qga-verify-modal";
-            modal.innerHTML = `
-                <div class="qga-verify-modal__header">
-                    <div class="qga-verify-modal__title"></div>
-                    <button type="button" class="qga-verify-modal__close" aria-label="Закрыть">×</button>
-                </div>
-                <div class="qga-verify-modal__body">
-                    <ul class="qga-verify-modal__list"></ul>
-                </div>
-            `;
-
-            const closeButton = modal.querySelector(".qga-verify-modal__close");
-            if (closeButton) {
-                closeButton.addEventListener("click", () => {
-                    modal.style.display = "none";
-                });
-            }
-
-            document.addEventListener("click", function closeOnClickOutside(e) {
-                if (modal.style.display !== "flex") return;
-                if (modal.contains(e.target)) return;
-                modal.style.display = "none";
-            });
-
-            document.documentElement.appendChild(modal);
-            makeVerifyModalHeaderResizable(modal);
-        }
+        const modal = ensureVerifyModalElement();
 
         const titleNode = modal.querySelector(".qga-verify-modal__title");
         const bodyNode = modal.querySelector(".qga-verify-modal__body");
@@ -366,50 +417,7 @@
     }
 
     function showVerifyRespondentModal(respondentId, answers, context, rowState) {
-        let modal = document.querySelector(".qga-verify-modal");
-        if (!modal) {
-            modal = document.createElement("aside");
-            modal.className = "qga-verify-modal";
-            modal.innerHTML = `
-                <div class="qga-verify-modal__header">
-                    <div class="qga-verify-modal__title"></div>
-                    <button type="button" class="qga-verify-modal__close" aria-label="Закрыть">×</button>
-                </div>
-                <div class="qga-verify-modal__body">
-                    <ul class="qga-verify-modal__list"></ul>
-                    <div class="qga-verify-modal__footer"></div>
-                </div>
-            `;
-
-            const closeButton = modal.querySelector(".qga-verify-modal__close");
-            if (closeButton) {
-                closeButton.addEventListener("click", () => {
-                    modal.style.display = "none";
-                });
-            }
-
-            document.addEventListener("click", function closeOnClickOutside(e) {
-                if (modal.style.display !== "flex") return;
-                if (modal.contains(e.target)) return;
-                modal.style.display = "none";
-            });
-
-            document.documentElement.appendChild(modal);
-            makeVerifyModalHeaderResizable(modal);
-
-            const bodyEl = modal.querySelector(".qga-verify-modal__body");
-            if (bodyEl) {
-                const scrollbarZone = 20;
-                bodyEl.addEventListener("mousemove", (e) => {
-                    const rect = bodyEl.getBoundingClientRect();
-                    const isNearScrollbar = (rect.right - e.clientX) <= scrollbarZone;
-                    bodyEl.classList.toggle("qga-verify-modal__body--scrollbar-hover", isNearScrollbar);
-                });
-                bodyEl.addEventListener("mouseleave", () => {
-                    bodyEl.classList.remove("qga-verify-modal__body--scrollbar-hover");
-                });
-            }
-        }
+        const modal = ensureVerifyModalElement({ withFooter: true, withBodyScrollbarHover: true });
 
         const titleNode = modal.querySelector(".qga-verify-modal__title");
         const listNode = modal.querySelector(".qga-verify-modal__list");
@@ -545,49 +553,7 @@
     }
 
     function showVerifyRespondentCandidates(respondentIds, answersMap, context, rowState) {
-        let modal = document.querySelector(".qga-verify-modal");
-        if (!modal) {
-            modal = document.createElement("aside");
-            modal.className = "qga-verify-modal";
-            modal.innerHTML = `
-                <div class="qga-verify-modal__header">
-                    <div class="qga-verify-modal__title"></div>
-                    <button type="button" class="qga-verify-modal__close" aria-label="Закрыть">×</button>
-                </div>
-                <div class="qga-verify-modal__body">
-                    <ul class="qga-verify-modal__list"></ul>
-                </div>
-            `;
-
-            const closeButton = modal.querySelector(".qga-verify-modal__close");
-            if (closeButton) {
-                closeButton.addEventListener("click", () => {
-                    modal.style.display = "none";
-                });
-            }
-
-            document.addEventListener("click", function closeOnClickOutside(e) {
-                if (modal.style.display !== "flex") return;
-                if (modal.contains(e.target)) return;
-                modal.style.display = "none";
-            });
-
-            document.documentElement.appendChild(modal);
-            makeVerifyModalHeaderResizable(modal);
-
-            const bodyEl = modal.querySelector(".qga-verify-modal__body");
-            if (bodyEl) {
-                const scrollbarZone = 20;
-                bodyEl.addEventListener("mousemove", (e) => {
-                    const rect = bodyEl.getBoundingClientRect();
-                    const isNearScrollbar = (rect.right - e.clientX) <= scrollbarZone;
-                    bodyEl.classList.toggle("qga-verify-modal__body--scrollbar-hover", isNearScrollbar);
-                });
-                bodyEl.addEventListener("mouseleave", () => {
-                    bodyEl.classList.remove("qga-verify-modal__body--scrollbar-hover");
-                });
-            }
-        }
+        const modal = ensureVerifyModalElement({ withBodyScrollbarHover: true });
 
         const projectIdCandidates = getProjectIdForVerify();
         const verifyIncorrectSetCandidates = projectIdCandidates ? getVerifyIncorrectIdsSetForProject(projectIdCandidates) : new Set();
