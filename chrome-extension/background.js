@@ -15,7 +15,8 @@ let qgaXlsxLibraryLoadError = null;
 try {
     importScripts(
         chrome.runtime.getURL("xlsx.full.min.js"),
-        chrome.runtime.getURL("content/shared/verify-keys.js")
+        chrome.runtime.getURL("content/shared/verify-keys.js"),
+        chrome.runtime.getURL("content/shared/xlsx-messaging.js")
     );
     qgaXlsxLibraryLoaded = typeof XLSX !== "undefined" && typeof XLSX.read === "function";
     if (!qgaXlsxLibraryLoaded) {
@@ -285,45 +286,27 @@ function parseRatingXlsxInBackground(arrayBuffer) {
     return { ok: true, tokenReasonCodes };
 }
 
-async function restoreQgaArrayBufferFromDataUrl(dataUrl) {
-    const payload = typeof dataUrl === "string" ? dataUrl.trim() : "";
-    if (!payload) {
-        return { ok: false, error: "Empty XLSX payload." };
-    }
-
-    try {
-        const response = await fetch(payload);
-        if (!response.ok) {
-            return { ok: false, error: `Failed to read XLSX payload: ${response.status}` };
-        }
-        return { ok: true, arrayBuffer: await response.arrayBuffer() };
-    } catch (error) {
-        return {
-            ok: false,
-            error: String(error && error.message ? error.message : error)
-        };
-    }
-}
-
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (!message || message.target !== "qga") {
         return;
     }
 
     if (message.type === "parse_xlsx") {
-        Promise.resolve().then(async () => {
+        Promise.resolve().then(() => {
             if (!ensureQgaXlsxLibraryLoaded()) {
                 sendResponse({ ok: false, error: "Failed to load XLSX library in background." });
                 return;
             }
 
             const parser = typeof message.parser === "string" ? message.parser.trim() : "";
-            const restored = await restoreQgaArrayBufferFromDataUrl(message.dataUrl);
-            if (!restored.ok) {
-                sendResponse({ ok: false, error: restored.error || "Failed to restore XLSX payload." });
+            const arrayBuffer =
+                typeof normalizeQgaXlsxArrayBuffer === "function"
+                    ? normalizeQgaXlsxArrayBuffer(message.arrayBuffer)
+                    : null;
+            if (!arrayBuffer) {
+                sendResponse({ ok: false, error: "Empty or invalid XLSX payload." });
                 return;
             }
-            const arrayBuffer = restored.arrayBuffer;
 
             let result = null;
             if (parser === "openends") {

@@ -9,7 +9,7 @@
     function normalizeSearchText(value) {
         return normalizeSingleLine(value)
             .toLowerCase()
-            .replace(/С‘/g, "Рµ")
+            .replace(/ё/g, "е")
             .replace(/[^\p{L}\p{N}\s:.-]/gu, " ")
             .replace(/\s+/g, " ")
             .trim();

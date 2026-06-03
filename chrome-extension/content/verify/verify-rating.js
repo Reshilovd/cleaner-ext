@@ -270,38 +270,6 @@
         };
     }
 
-    function serializeVerifyArrayBufferForBackground(arrayBuffer) {
-        return new Promise((resolve, reject) => {
-            if (!(arrayBuffer instanceof ArrayBuffer)) {
-                reject(new Error("Неверный формат данных (ожидался ArrayBuffer)."));
-                return;
-            }
-
-            if (typeof Blob === "undefined" || typeof FileReader === "undefined") {
-                reject(new Error("Blob/FileReader is unavailable."));
-                return;
-            }
-
-            const reader = new FileReader();
-            reader.onload = () => {
-                if (typeof reader.result === "string" && reader.result) {
-                    resolve(reader.result);
-                    return;
-                }
-                reject(new Error("FileReader returned empty payload."));
-            };
-            reader.onerror = () => {
-                reject(reader.error || new Error("FileReader failed to serialize XLSX payload."));
-            };
-
-            reader.readAsDataURL(
-                new Blob([arrayBuffer], {
-                    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                })
-            );
-        });
-    }
-
     async function requestVerifyXlsxBackgroundParse(parserName, arrayBuffer) {
         if (
             typeof chrome === "undefined" ||
@@ -311,14 +279,14 @@
             return { ok: false, error: "chrome.runtime.sendMessage is unavailable." };
         }
 
-        let dataUrl = "";
-        try {
-            dataUrl = await serializeVerifyArrayBufferForBackground(arrayBuffer);
-        } catch (error) {
-            return {
-                ok: false,
-                error: String(error && error.message ? error.message : error)
-            };
+        const payload =
+            typeof normalizeQgaXlsxArrayBuffer === "function"
+                ? normalizeQgaXlsxArrayBuffer(arrayBuffer)
+                : arrayBuffer instanceof ArrayBuffer && arrayBuffer.byteLength > 0
+                  ? arrayBuffer
+                  : null;
+        if (!payload) {
+            return { ok: false, error: "Неверный или пустой XLSX payload." };
         }
 
         return await new Promise((resolve) => {
@@ -328,7 +296,7 @@
                         target: "qga",
                         type: "parse_xlsx",
                         parser: parserName,
-                        dataUrl
+                        arrayBuffer: payload
                     },
                     (response) => {
                         const runtimeError =

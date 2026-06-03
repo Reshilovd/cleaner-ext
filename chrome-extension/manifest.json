@@ -4,8 +4,7 @@
   "description": "Внутренний инструмент для Cleaner и Pyrus: OpenEnds, VerifyMain, ручная чистка и перенос данных проекта.",
   "version": "1.0.4",
   "permissions": [
-    "storage",
-    "scripting"
+    "storage"
   ],
   "host_permissions": [
     "https://clr.env7.biz/*",
@@ -42,6 +41,7 @@
         "content/common/dom-utils.js",
         "content/common/common-utils.js",
         "content/shared/verify-keys.js",
+        "content/shared/xlsx-messaging.js",
         "content/cleaner-projects/cleaner-projects-author-filter.js",
         "content/cleaner-projects/cleaner-projects-favorites.js",
         "content/pyrus/pyrus.js",

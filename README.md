@@ -61,7 +61,7 @@
 ## Технические детали
 
 - Manifest: `MV3`, service worker в `chrome-extension/background.js`.
-- Permissions: `storage`, `scripting`.
+- Permissions: `storage`.
 - Host permissions: `clr.env7.biz`, `pyrus.com`, `www.pyrus.com` (см. `chrome-extension/manifest.json`).
 - Разбор XLSX выполняется через `xlsx.full.min.js`; для тяжёлых операций используется background-парсинг.
 - Основные иконки причин Verify (`inc/speed/manual/table`) объявлены как `web_accessible_resources`.

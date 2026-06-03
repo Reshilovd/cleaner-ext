@@ -37,4 +37,4 @@
 - Модули из этой папки сильно завязаны на общий `state` и должны грузиться после `base` и `common`.
 - Bootstrap VerifyMain находится в `base/verify-bootstrap.js`, а не здесь.
 - Состояние ручной чистки живёт сразу в нескольких источниках (`manualBfridsState`, `manualApiState`, DOM textarea), поэтому изменения нужно держать синхронными.
-- Разбор XLSX по возможности уходит в background service worker через сообщения; fallback на main thread остаётся только запасным вариантом.
+- Разбор XLSX по возможности уходит в background service worker: `ArrayBuffer` передаётся через `chrome.runtime.sendMessage` (structured clone); fallback на main thread остаётся только запасным вариантом.
